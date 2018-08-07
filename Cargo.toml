@@ -1,0 +1,19 @@
+[package]
+name = "bibrs"
+version = "0.1.0"
+authors = ["Keji Li <mail@keji.li>"]
+
+[dependencies]
+dirs = "^1.0.2"
+latex-to-unicode = {git = "https://github.com/vks/latex-to-unicode.git"}
+lazy_static = "^1.0.2"
+nom-bibtex = "^0.2.0"
+regex = "^1.0.2"
+rusqlite = "^0.13.0"
+serde = "^1.0.70"
+serde_derive = "^1.0.70"
+serde_json = "^1.0.24"
+structopt = "^0.2.10"
+termion = "^1.5.1"
+toml = "^0.4.6"
+unicode-normalization = "^0.1.7"
