@@ -72,22 +72,21 @@ fn main() {
     let opt = Bibrs::from_args();
     match opt {
         Bibrs::Search{authors, keywords} =>
-            action::search(authors.join(" ").split(",").map(String::from).collect(),
-                           keywords.join(" ").split(",").map(String::from).collect()),
-        Bibrs::Open{id, comment, pdf} => action::open(id, comment, pdf),
+            action::search(authors.join(" ").split(",").map(|x| x.trim().to_string()).collect(),
+                           if keywords.len() > 0 {
+                               keywords.join(" ").split(",").map(|x| x.trim().to_string()).collect()
+                           } else {keywords}),
+        Bibrs::Open{id, comment, pdf} => action::open(&id, comment, pdf),
         Bibrs::Add{keywords} => action::add_paper(keywords),
-        Bibrs::Delete{id} => action::delete(id),
+        Bibrs::Delete{id} => action::delete(&id),
         Bibrs::Output{source, bibtex, simple} => {
-            if bibtex ^ simple {
-                action::output(source, if bibtex {"bib"} else {"str"});
-            } else {
-                println!("please select one output format!");
-            }
+            if bibtex { action::output_bib(&source); }
+            if simple || !bibtex { action::output_str(&source); }
         },
         Bibrs::Keywords{source, add, del} =>
-            action::keywords(source, add.join(" ").split(",").map(String::from).collect(),
+            action::keywords(&source, add.join(" ").split(",").map(String::from).collect(),
                              del.join(" ").split(",").map(String::from).collect()),
-        Bibrs::Init => action::initialize()
+        Bibrs::Init => config::initialize()
     }
 }
 

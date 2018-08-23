@@ -3,10 +3,10 @@ use self::serde_json::{Value, Error};
 
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
-pub fn read_pandoc(file_path: &Path) -> Result<Vec<String>, Error> {
+pub fn read_pandoc(file_path: &PathBuf) -> Result<Vec<String>, Error> {
     let mut pd_str = String::new();
     let json_str: String = match file_path.extension().unwrap().to_string_lossy().as_ref() {
         "ast" | "json" => {
@@ -54,7 +54,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_read_pandoc() {
-        let citations = read_pandoc(Path::new("test/data/extract_test.txt")).unwrap();
+        let citations = read_pandoc(&"test/data/extract_test.txt".into()).unwrap();
         assert_eq!(citations, vec!["ehrhart2016", "kriaucionis2004", "dragich2007", "kerr2012", "itoh2012", "kerr2012", "kerr2012", "dragich2007"])
     }
 }

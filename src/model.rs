@@ -6,12 +6,12 @@ pub struct Person {
     pub id: Option<i32>,
     pub last_name: String,
     pub first_name: String,
-    pub search_term: Vec<u8>,
+    pub search_term: String,
 }
 
 #[derive(Default, Debug)]
 pub struct Entry {
-    pub citation: Vec<u8>,
+    pub citation: String,
     pub entry_type: EntryType,
     pub title: String,
     pub booktitle: Option<String>, 

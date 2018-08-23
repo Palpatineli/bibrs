@@ -15,22 +15,22 @@ use self::unicode_normalization::UnicodeNormalization;
 use model::{Entry, Person};
 use entry_type::EntryType;
 
-fn strip_accent(input: &str) -> Vec<u8> {
-    input.nfd().filter(|x| x.is_ascii_alphanumeric()).collect::<String>().into_bytes()
+fn strip_accent(input: &str) -> String {
+    input.nfd().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()
 }
 
 impl Person {
     pub fn load(input: &str) -> Self {
         if input.contains(", ") {
             let mut substr_iter = input.split(", ");
-            let last_name = substr_iter.next().unwrap().to_owned();
-            let first_name = substr_iter.next().unwrap().to_owned();
+            let last_name = substr_iter.next().unwrap().to_owned().to_lowercase();
+            let mut first_name = substr_iter.next().unwrap().to_owned().to_lowercase();
             let search_term = strip_accent(&last_name);
             Person { id: None, last_name, first_name, search_term }
         } else {
-            let mut substr_iter = input.rsplitn(2, " ");
-            let first_name = substr_iter.next().unwrap().to_owned();
-            let last_name = substr_iter.next().unwrap().to_owned();
+            let mut substr_iter = input.rsplitn(2, " ");  // ! return word order is reversed too
+            let mut last_name = substr_iter.next().unwrap().to_owned().to_lowercase();
+            let mut first_name = substr_iter.next().unwrap().to_owned().to_lowercase();
             let search_term = strip_accent(&last_name);
             Person { id: None, last_name, first_name, search_term }
         }
@@ -106,9 +106,9 @@ impl Entry {
                 "month" => entry.month = Some(content.parse::<i32>().unwrap()),
                 "number" => entry.number = Some(content.parse::<i32>().unwrap()),
                 "volume" => entry.volume = Some(content.parse::<i32>().unwrap()),
-                "journal" => entry.journal = Some(content.to_owned().to_lowercase()),
+                "journal" => entry.journal = Some(content.to_owned()),
                 "id" | "publisher" | "school" | "insititution" | "note" | "url" | "series" | "address" | "howpublished" |
-                     "organization" => entry.extra_fields.push((field_name.to_owned(), content.to_owned().to_lowercase())),
+                     "organization" => entry.extra_fields.push((field_name.to_owned(), content.to_owned())),
                 _ => continue,
             }
         }
@@ -150,23 +150,19 @@ mod tests {
     #[test]
     fn test_strip_accent() {
         let a = "βaèâbcd";
-        assert_eq!(strip_accent(a), "aeabcd".as_bytes());
+        assert_eq!(strip_accent(a), "aeabcd");
         let b = "bcdefg";
-        assert_eq!(strip_accent(b), "bcdefg".as_bytes());
+        assert_eq!(strip_accent(b), "bcdefg");
     }
     #[test]
     fn test_from_parser() {
-        println!( "{}",
-            read_entries(Path::new("test/data/test.bib"))
-                .iter()
-                .map(|m| m.to_str()).collect::<Vec<String>>()
-                .join("\n")
-        );
-        println!( "{}",
-            read_entries(Path::new("test/data/test.bib"))
-                .iter()
-                .map(|m| m.to_bib()).collect::<Vec<String>>()
-                .join("\n")
-        );
+        let entries = read_entries(Path::new("test/data/test.bib"));
+        assert_eq!(entries[0].citation, "einstein");
+        assert_eq!(entries[0].authors[0].last_name, "einstein");
+        assert_eq!(entries[0].authors[0].first_name, "albert");
+        assert_eq!(entries[0].journal, Some("Annalen der Physik".to_owned()));
+        assert_eq!(entries[0].year, 1905);
+        assert_eq!(entries[1].extra_fields.iter().filter(|x| x.0 == "address")
+            .collect::<Vec<&(String, String)>>()[0].1, "Reading, Massachusetts");
     }
 }

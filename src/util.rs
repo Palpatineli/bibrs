@@ -1,18 +1,27 @@
+use std::borrow::Cow;
+
 pub trait ToTitleCase {
-    fn to_title(&self) -> String;
+    fn to_title<'a>(&'a self) -> Cow<'a, str>;
 }
 
+/// Allow raw string to be converted to title case if it's the first letter after braces, spaces
+/// and periods.
 impl ToTitleCase for String {
-    fn to_title(&self) -> String {
+    fn to_title<'a>(&'a self) -> Cow<'a, str> {
         let mut in_curly = 0;
         let mut space = true;
-        self.chars().map(|cur| 
-            if cur.is_whitespace() { space = true; cur }
-            else if cur == '{' { space = false; in_curly += 1; cur }
-            else if cur == '}' { space = false; in_curly -= 1; cur }
-            else if in_curly > 0 { space = false; cur }
-            else { if space {space = false; cur.to_ascii_uppercase()} else {cur.to_ascii_lowercase()} }
-        ).collect::<String>()
+        self.chars().map(|cur|  // depends on state, cannot convert to parallel
+            match cur {
+                ' ' | '.' | ',' | '?' => { space = true; cur },
+                '{' => { space = false; in_curly += 1; cur },
+                '}' => { space = false; in_curly -= 1; cur },
+                _ if in_curly > 0 => { space = false; cur },
+                _ => {
+                    if space {space = false; cur.to_ascii_uppercase()}
+                    else {cur.to_ascii_lowercase()}
+                }
+            }
+        ).collect::<Cow<'a, str>>()
     }
 }
 
