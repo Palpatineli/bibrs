@@ -75,7 +75,7 @@ impl SqliteBibDB {
 
     fn get_keywords(&self, id: &str) -> Vec<String> {
         let mut query = self.conn.prepare_cached(
-            "SELECT text FROM item_keywords JOIN keywords ON item_keywords.keyword_id=keywords.id WHERE item_id=? ORDER BY text").unwrap();
+            "SELECT text FROM item_keywords JOIN keywords ON item_keywords.keyword_id=keywords.id WHERE item_id=? ORDER BY text ASC").unwrap();
         let result = query.query_map(&[&id], |row| row.get(0)).unwrap().collect::<Result<Vec<String>>>().unwrap();
         result
     }
@@ -229,6 +229,7 @@ impl BibDataBase for SqliteBibDB {
         Ok(())
     }
 
+    /// Delete keywords associations
     fn del_keywords(&self, citation: &str, terms: &Vec<String>) -> Result<()> {
         let mut query_del_relation = self.conn.prepare_cached(
             &format!("

@@ -84,8 +84,10 @@ fn main() {
             if simple || !bibtex { action::output_str(&source); }
         },
         Bibrs::Keywords{source, add, del} =>
-            action::keywords(&source, add.join(" ").split(",").map(String::from).collect(),
-                             del.join(" ").split(",").map(String::from).collect()),
+            action::keywords(&source, add.join(" ").split(",").map(|x| x.trim().to_string())
+                                .filter(|x| x.len() > 0).collect(),
+                             del.join(" ").split(",").map(|x| x.trim().to_string())
+                                .filter(|x| x.len() > 0).collect()),
         Bibrs::Init => config::initialize()
     }
 }
