@@ -1,11 +1,8 @@
-extern crate toml;
-extern crate dirs;
-
 use std::fs::{File, copy, create_dir};
 use std::io::{Read, stdin, Error as IOError};
-
-use self::dirs::home_dir;
 use std::path::PathBuf;
+
+use dirs::home_dir;
 use rusqlite::Connection;
 
 #[derive(Deserialize)]

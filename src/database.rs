@@ -7,9 +7,10 @@ use std::collections::HashSet;
 use rusqlite::{Connection, Result};
 use rusqlite::types::Value::{Integer, Text};
 use rusqlite::types::ToSql;
-use model::{Entry, Person};
-use entry_type::EntryType;
-use config::{CONFIG, Config};
+
+use crate::model::{Entry, Person};
+use crate::entry_type::EntryType;
+use crate::config::{CONFIG, Config};
 
 pub enum ConfigOrPath {
     Config(Config),
@@ -263,7 +264,7 @@ impl BibDataBase for SqliteBibDB {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use config::read_config;
+    use crate::config::read_config;
 
     macro_rules! vec_str {
         ($($word:expr),+) => {{

@@ -1,19 +1,14 @@
-extern crate structopt;
-#[macro_use] extern crate lazy_static;
-#[macro_use] extern crate serde_derive;
+use structopt::StructOpt;
 
 mod action;
-mod database;
-mod reader;
-mod formatter;
-
 mod config;
-mod util;
-mod model;
-mod file;
+mod database;
 mod entry_type;
-
-use structopt::StructOpt;
+mod file;
+mod formatter;
+mod model;
+mod reader;
+mod util;
 
 #[derive(StructOpt, Debug, PartialEq)]
 #[structopt(name = "bibrs")]

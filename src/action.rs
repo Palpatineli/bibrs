@@ -1,13 +1,14 @@
 #![allow(unused)]
 use std::path::PathBuf;
 use std::fs;
-use config;
-use util::BibFileExt;
-use formatter::BibPrint;
-use model::Entry;
-use database::{SqliteBibDB, BibDataBase};
-use reader::pandoc::read_pandoc;
 use termion::{color, style};
+
+use crate::formatter::{BibPrint, LabeledPrint};
+use crate::model::Entry;
+use crate::database::{SqliteBibDB, BibDataBase};
+use crate::reader::pandoc::read_pandoc;
+use crate::config;
+use crate::util::BibFileExt;
 
 pub fn search(author: Vec<String>, keywords: Vec<String>) {
     let conn = SqliteBibDB::new(None);
@@ -25,7 +26,7 @@ pub fn open(id: &str, comment: bool, pdf: bool) {
     let result = conn.get_item(&id).expect(&format!("Cannot find entry with id {}", &id));
     let files = conn.get_files(&id);
     for (file_type, file_name) in files.iter() {
-        if (comment && file_type == "comment") || (pdf && file_type = "pdf") { }
+        if (comment && (file_type == "comment")) || (pdf && (file_type = "pdf")) { }
     }
 }
 

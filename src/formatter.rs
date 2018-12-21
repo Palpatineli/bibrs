@@ -1,7 +1,6 @@
-use std::fmt;
-use model::{Entry, Person};
-use util::ToTitleCase;
-use termion::{style, color};
+use termion::{color};
+use crate::model::{Entry, Person};
+use crate::util::ToTitleCase;
 
 pub trait BibPrint {
     fn to_bib(&self) -> String;
@@ -45,7 +44,7 @@ impl BibPrint for Vec<String> {
     fn to_bib(&self) -> String { self.join(", ")}
 }
 
-trait LabeledPrint { fn labeled_to_str(&self, searched: &[String]) -> String; }
+pub trait LabeledPrint { fn labeled_to_str(&self, searched: &[String]) -> String; }
 
 impl Person {
     pub fn labeled_to_str(&self) -> String {
@@ -145,7 +144,7 @@ impl Entry {
 pub trait TrimStr { fn trim_str(&self) -> String; }
 
 impl TrimStr for String { fn trim_str(&self) -> String {
-    let length = self.trim_right().len();
+    let length = self.trim_end().len();
     let mut result = self.clone();
     result.truncate(length);
     result
@@ -165,7 +164,7 @@ pub mod tests {
         assert_eq!("ėfgh âbcd, ėfgh Bcdê & ėfgh B3dê", persons.to_str());
         assert_eq!("âbcd, ėfgh and Bcdê, ėfgh and B3dê, ėfgh", persons.to_bib());
     }
-    use reader::bibtex;
+    use crate::reader::bibtex;
     use std::path::PathBuf;
     #[test]
     fn test_item() {
