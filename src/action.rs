@@ -2,6 +2,7 @@
 use std::path::PathBuf;
 use std::fs;
 use config;
+use util::BibFileExt;
 use formatter::BibPrint;
 use model::Entry;
 use database::{SqliteBibDB, BibDataBase};
@@ -20,6 +21,12 @@ pub fn search(author: Vec<String>, keywords: Vec<String>) {
 }
 
 pub fn open(id: &str, comment: bool, pdf: bool) {
+    let conn = SqliteBibDB::new(None);
+    let result = conn.get_item(&id).expect(&format!("Cannot find entry with id {}", &id));
+    let files = conn.get_files(&id);
+    for (file_type, file_name) in files.iter() {
+        if (comment && file_type == "comment") || (pdf && file_type = "pdf") { }
+    }
 }
 
 pub fn add_paper(keywords: Vec<String>) { }
@@ -60,14 +67,16 @@ pub fn output_bib(source: &str) {
             })
     } else {
         let output = conn.get_item(source).expect(&format!("Cannot find entry {}", source))
-            .to_str();
+            .to_bib();
         println!("{}", output);
     }
 }
 
-pub fn keywords(source: &str, mut add: Vec<String>, mut del: Vec<String>) {
+/// add or delete keywords
+/// print the resulting entry, with new keywords in red and deleted keywords in invert color
+pub fn keywords(citation: &str, mut add: Vec<String>, mut del: Vec<String>) {
     let conn = SqliteBibDB::new(None);
-    let old_entry = conn.get_item(source).expect(&format!("Cannot find entry {}", &source));
+    let old_entry = conn.get_item(citation).expect(&format!("Cannot find entry {}", &citation));
     if add.len() > 0 {  // non-exsitng keywords to add
         add = add.into_iter().filter(
             |x| !old_entry.keywords.contains(x)
@@ -86,9 +95,9 @@ pub fn keywords(source: &str, mut add: Vec<String>, mut del: Vec<String>) {
     }
     if has_new {conn.add_keywords(&old_entry.citation, &add);}
     if has_del {conn.del_keywords(&old_entry.citation, &del);}
-    let new_entry = conn.get_item(source).unwrap();
-    let mut new_terms: Vec<String> = new_entry.keywords.clone();
-    let retained_terms = new_terms.drain_filter(|x| old_entry.keywords.contains(x)).collect::<Vec<String>>();
+    let new_entry = conn.get_item(citation).unwrap();
+    let (new_terms, retained_terms): (Vec<String>, Vec<String>) = new_entry.keywords.clone().into_iter()
+        .partition(|x| old_entry.keywords.contains(&x));
     let deleted_terms = old_entry.keywords.into_iter().filter(|x| !new_entry.keywords.contains(x)).collect::<Vec<String>>();
     let mut keywords: Vec<(String, String)> = new_terms.into_iter().map(
         move |x| (x.clone(), format!("{}{}{}", color::Fg(color::Red), x, color::Fg(color::Reset)))

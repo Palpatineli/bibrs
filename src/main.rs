@@ -1,7 +1,4 @@
-#![feature(drain_filter)]
-extern crate rusqlite;
-extern crate termion;
-#[macro_use] extern crate structopt;
+extern crate structopt;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate serde_derive;
 
@@ -13,6 +10,7 @@ mod formatter;
 mod config;
 mod util;
 mod model;
+mod file;
 mod entry_type;
 
 use structopt::StructOpt;

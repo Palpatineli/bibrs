@@ -26,6 +26,7 @@ pub trait BibDataBase {
     fn delete(&self, id: &str) -> Result<()>;
     fn add_keywords(&self, citation: &str, terms: &Vec<String>) -> Result<()>;
     fn del_keywords(&self, citation: &str, terms: &Vec<String>) -> Result<()>;
+    fn get_files(&self, citation: &str) -> Vec<(String, String)>;
 }
 
 macro_rules! multi_param {
@@ -153,14 +154,24 @@ impl BibDataBase for SqliteBibDB {
         )
     }
 
+    fn get_files(&self, citation: &str) -> Vec<(String, String)> {
+        const FILE_QUERY: &str = "
+            SELECT name, object_type
+              FROM file
+             WHERE item_id=?";
+        let mut file_query = self.conn.prepare_cached(FILE_QUERY).unwrap();
+        let files = file_query.query_map(&[&citation], |row| (row.get::<_, String>(0), row.get::<_, String>(1))).unwrap()
+            .collect::<Result<Vec<(String, String)>>>().unwrap();
+        files
+    }
+
     fn delete(&self, id: &str) -> Result<()> {
         const DELETE_QUERY: &str = "
             DELETE i, ip 
               FROM items AS i
              INNER JOIN item_persons AS ip
                 ON items.citation=item_persons.item_id
-             WHERE items.citation=?
-            ";
+             WHERE items.citation=?";
         self.conn.execute(DELETE_QUERY, &[&id]).map(|_| ())
     }
 
