@@ -2,9 +2,7 @@ mod journal;
 
 use std::str;
 use std::path::PathBuf;
-use std::iter::FromIterator;
-use std::collections::HashSet;
-use rusqlite::{Connection, Result};
+use rusqlite::{params, Connection, Result};
 use rusqlite::types::Value::{Integer, Text};
 use rusqlite::types::ToSql;
 
@@ -40,9 +38,9 @@ macro_rules! multi_param {
 
 macro_rules! build_param {
     ($(($terms:ident, $no:expr)),+) => {{
-        let mut out: Vec<&ToSql> = Vec::new();
+        let mut out: Vec<&dyn ToSql> = Vec::new();
         $(
-            out.append(&mut $terms.iter().map(|x| x as &ToSql).collect());
+            out.append(&mut $terms.iter().map(|x| x as &dyn ToSql).collect());
             out.push($no);
         )+
         out
@@ -58,7 +56,7 @@ impl SqliteBibDB {
         };
         let conn = Connection::open(&db_path).expect(
             &format!("Cannot open sqlite file at {}!", db_path.to_string_lossy()));
-        conn.execute("PRAGMA foreign_keys = ON", &[]).unwrap();
+        conn.pragma_update(None, "foreign_keys", &"ON").unwrap();
         SqliteBibDB{conn}
     }
 
@@ -68,7 +66,12 @@ impl SqliteBibDB {
     fn get_people(&self, id: &str) -> (Vec<Person>, Vec<Person>)  {
         let mut query = self.conn.prepare_cached("SELECT is_editor, persons.id, last_name, first_name, search_term FROM item_persons JOIN persons ON item_persons.person_id=persons.id WHERE item_id=? ORDER BY is_editor, order_seq").unwrap();
         let people: Vec<(Person, bool)> = query.query_map(&[&id],
-            |row| (Person {id:row.get(1), last_name: row.get(2), first_name: row.get(3), search_term: row.get::<_, String>(4)}, row.get(0))
+            |row| (Ok((Person {
+                id:row.get_unwrap(1),
+                last_name: row.get_unwrap(2),
+                first_name: row.get_unwrap(3),
+                search_term: row.get_unwrap::<_, String>(4)
+            }, row.get_unwrap(0))))
         ).unwrap().collect::<Result<Vec<(Person, bool)>>>().unwrap();
         let (editors, authors): (Vec<(Person, bool)>, Vec<(Person, bool)>)
             = people.into_iter().partition(|(_, is_editor)| *is_editor);
@@ -84,7 +87,7 @@ impl SqliteBibDB {
 
     fn get_extra_fields(&self, id: &str) -> Vec<(String, String)> {
         let mut query = self.conn.prepare_cached("SELECT field, value FROM extra_fields WHERE item_id=?").unwrap();
-        let result = query.query_map(&[&id], |row| (row.get(0), row.get(1)))
+        let result = query.query_map(&[&id], |row| Ok((row.get_unwrap(0), row.get_unwrap(1))))
             .unwrap().collect::<Result<Vec<(String, String)>>>().unwrap();
         result
     }
@@ -99,8 +102,8 @@ impl SqliteBibDB {
                 SELECT id, text
                   FROM keywords
                  WHERE text IN ({})", multi_param!(terms.len()))).unwrap();
-        let rows = query.query_map(&(terms.iter().map(|x| x as &ToSql).collect::<Vec<&ToSql>>()),
-            |row| (row.get::<_, i64>(0), row.get::<_, String>(1)))
+        let rows = query.query_map(&(terms.iter().map(|x| x as &dyn ToSql).collect::<Vec<&dyn ToSql>>()),
+            |row| Ok((row.get_unwrap::<_, i64>(0), row.get_unwrap::<_, String>(1))))
             .unwrap().collect::<Result<Vec<(i64, String)>>>().unwrap();
         let mut ids: Vec<i64> = Vec::new();
         let mut texts: Vec<String> = Vec::new();
@@ -112,10 +115,10 @@ impl SqliteBibDB {
 
 macro_rules! get_col {
     ($row:ident, $no:expr, Integer) => {
-        if let Integer(temp) = $row.get($no) {Some(temp as i32)} else {None}
+        if let Integer(temp) = $row.get_unwrap($no) {Some(temp as i32)} else {None}
     };
     ($row:ident, $no:expr, Text) => {
-        if let Text(temp) = $row.get($no) {Some(temp as String)} else {None}
+        if let Text(temp) = $row.get_unwrap($no) {Some(temp as String)} else {None}
     }
 }
 
@@ -132,12 +135,12 @@ impl BibDataBase for SqliteBibDB {
         query.query_row(&[&id],
             |row| {
                 let (authors, editors) = self.get_people(id);
-                Entry{
-                    citation: row.get::<_, String>(0),
-                    entry_type: EntryType::parse(&row.get::<_, String>(1)),
-                    title: row.get(2),
+                Ok(Entry{
+                    citation: row.get::<_, String>(0).unwrap(),
+                    entry_type: EntryType::parse(&row.get::<_, String>(1).unwrap()),
+                    title: row.get(2).unwrap(),
                     booktitle: get_col!(row, 3, Text),
-                    year: row.get(4),
+                    year: row.get(4).unwrap(),
                     month: get_col!(row, 5, Integer),
                     chapter: get_col!(row, 6, Integer),
                     edition: get_col!(row, 7, Integer),
@@ -150,7 +153,7 @@ impl BibDataBase for SqliteBibDB {
                     keywords: self.get_keywords(id),
                     files: Vec::new(),
                     extra_fields: self.get_extra_fields(id),
-                }
+                })
             }
         )
     }
@@ -158,10 +161,10 @@ impl BibDataBase for SqliteBibDB {
     fn get_files(&self, citation: &str) -> Vec<(String, String)> {
         const FILE_QUERY: &str = "
             SELECT name, object_type
-              FROM file
+              FROM files
              WHERE item_id=?";
         let mut file_query = self.conn.prepare_cached(FILE_QUERY).unwrap();
-        let files = file_query.query_map(&[&citation], |row| (row.get::<_, String>(0), row.get::<_, String>(1))).unwrap()
+        let files = file_query.query_map(&[&citation], |row| Ok((row.get_unwrap::<_, String>(0), row.get_unwrap::<_, String>(1)))).unwrap()
             .collect::<Result<Vec<(String, String)>>>().unwrap();
         files
     }
@@ -179,7 +182,7 @@ impl BibDataBase for SqliteBibDB {
     fn search(&self, authors: &[String], keywords: &[String]) -> Vec<Entry> {
         let author_no = authors.len() as isize;
         let keyword_no = keywords.len() as isize;
-        let (query_str, terms): (String, Vec<&ToSql>) = if author_no > 0 {
+        let (query_str, terms): (String, Vec<&dyn ToSql>) = if author_no > 0 {
             if keyword_no > 0 {
                 (format!("
                     SELECT item_id
@@ -236,7 +239,7 @@ impl BibDataBase for SqliteBibDB {
         let row_ids: Vec<i64> = unexist.iter().map(|x| query_insert_key.insert(&[x]).unwrap()).collect();
         let mut query_insert_relation = self.conn.prepare_cached("INSERT INTO item_keywords (item_id, keyword_id) VALUES (?, ?)").unwrap();
         for id in unrelated_ids.iter().chain(row_ids.iter()) {
-            query_insert_relation.execute(&[&citation, id])?;
+            query_insert_relation.execute(params![citation, id])?;
         }
         Ok(())
     }
@@ -253,8 +256,8 @@ impl BibDataBase for SqliteBibDB {
                       WHERE item_keywords.item_id=?
                         AND keywords.text IN ({})
                  )", multi_param!(terms.len()))).unwrap();
-        let mut params: Vec<&ToSql> = vec![&citation];
-        let sql_terms = terms.iter().map(|x| x as &ToSql).collect::<Vec<&ToSql>>();
+        let mut params: Vec<&dyn ToSql> = vec![&citation];
+        let sql_terms = terms.iter().map(|x| x as &dyn ToSql).collect::<Vec<&dyn ToSql>>();
         params.extend(sql_terms.into_iter());
         query_del_relation.execute(&params)?;
         Ok(())

@@ -1,4 +1,4 @@
-use termion::{color};
+use termion::color;
 use crate::model::{Entry, Person};
 use crate::util::ToTitleCase;
 

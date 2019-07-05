@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::io::Result;
 
 pub trait ToTitleCase {
     fn to_title<'a>(&'a self) -> Cow<'a, str>;
@@ -24,20 +23,6 @@ impl ToTitleCase for String {
             }
         ).collect::<Cow<'a, str>>()
     }
-}
-
-pub trait BibFileExt {
-    fn spawn(&mut self) -> Result<()>;
-}
-
-pub struct CommentFile { file_path: String, }
-impl CommentFile {
-    pub fn new(file_path: String) -> Self { CommentFile{ file_path: file_path.clone() }}
-}
-pub struct PdfFile { file_path: String, }
-
-impl BibFileExt for CommentFile {
-    fn spawn(&mut self) -> Result<()> {}
 }
 
 #[cfg(test)]

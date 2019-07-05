@@ -2,14 +2,16 @@ use std::fs::{File, copy, create_dir};
 use std::io::{Read, stdin, Error as IOError};
 use std::path::PathBuf;
 
+use serde_derive::Deserialize;
 use dirs::home_dir;
 use rusqlite::Connection;
+use lazy_static::lazy_static;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct FileHandler {
-    folder: PathBuf,
-    extension: Vec<String>,
-    opener: String,
+    pub folder: PathBuf,
+    pub extension: Vec<String>,
+    pub opener: String,
 }
 
 #[derive(Deserialize)]
@@ -59,6 +61,7 @@ pub fn initialize() {
     };
 }
 
+/// load config from xdg_config, if doesn't exist then copy default config from crate
 fn init_config() -> Result<Config, IOError> {
     let config_path = home_dir().unwrap().join(".config/bibrs.toml");
     if !config_path.exists() {
@@ -68,6 +71,7 @@ fn init_config() -> Result<Config, IOError> {
     Ok(read_config(Some(config_path)))
 }
 
+/// create pdf and comment folders if they do not exist
 fn init_folders(config: &Config) -> Result<(), IOError> {
     for path in &[&config.pdf.folder, &config.comment.folder] {
         let target_path = PathBuf::from(path.clone());
@@ -81,6 +85,7 @@ fn init_folders(config: &Config) -> Result<(), IOError> {
     Ok(())
 }
 
+/// copy journal database to database location. run full db set up script.
 fn init_database(config: &Config) -> Result<(), IOError> {
     let journal_db_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/journal.sqlite");
     if !journal_db_path.exists() { copy(journal_db_path, &config.journal_db)?; }

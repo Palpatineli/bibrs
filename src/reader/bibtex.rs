@@ -1,19 +1,17 @@
 #![allow(unused)]
-extern crate unicode_normalization;
-extern crate nom_bibtex;
-extern crate regex;
-
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 use std::io::prelude::*;
 
-use self::nom_bibtex::Bibtex;
-use self::nom_bibtex::model::Bibliography;
-use self::regex::Regex;
-use self::unicode_normalization::UnicodeNormalization;
-use model::{Entry, Person};
-use entry_type::EntryType;
+use nom_bibtex::Bibtex;
+use nom_bibtex::model::Bibliography;
+use regex::Regex;
+use unicode_normalization::UnicodeNormalization;
+use lazy_static::lazy_static;
+
+use crate::model::{Entry, Person};
+use crate::entry_type::EntryType;
 
 fn strip_accent(input: &str) -> String {
     input.nfd().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()

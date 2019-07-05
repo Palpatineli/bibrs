@@ -1,17 +1,25 @@
 #![allow(unused)]
 use std::path::PathBuf;
 use std::fs;
-use termion::{color, style};
 
 use crate::formatter::{BibPrint, LabeledPrint};
 use crate::model::Entry;
 use crate::database::{SqliteBibDB, BibDataBase};
 use crate::reader::pandoc::read_pandoc;
 use crate::config;
-use crate::util::BibFileExt;
+use crate::file::{File, BibFile};
 
-pub fn search(author: Vec<String>, keywords: Vec<String>) {
+mod keywords;
+pub use self::keywords::keywords;
+
+pub fn search(mut author: Vec<String>, mut keywords: Vec<String>) {
     let conn = SqliteBibDB::new(None);
+    author.retain(|x| x.len() > 0);
+    keywords.retain(|x| x.len() > 0);
+    if author.len() == 0 && keywords.len() == 0 {
+        println!("Search by author last names either/or keywords!");
+        return
+    }
     let results = conn.search(&author, &keywords);    
     if results.len() == 0 {
         println!("Entries not found for authors [{}] and keywords [{}]",
@@ -24,9 +32,22 @@ pub fn search(author: Vec<String>, keywords: Vec<String>) {
 pub fn open(id: &str, comment: bool, pdf: bool) {
     let conn = SqliteBibDB::new(None);
     let result = conn.get_item(&id).expect(&format!("Cannot find entry with id {}", &id));
-    let files = conn.get_files(&id);
-    for (file_type, file_name) in files.iter() {
-        if (comment && (file_type == "comment")) || (pdf && (file_type = "pdf")) { }
+    let files = conn.get_files(&result.citation);
+    let mut has_comment = false;
+    for (file_name, file_type) in files.iter() {
+        if (pdf && (file_type == "pdf")) {
+            let pdf_file = File::new(&file_name, &file_type);
+            pdf_file.open();
+        }
+        if (comment && (file_type == "comment")) {
+            has_comment = true;
+            let comment_file = File::new(&file_name, &file_type);
+            comment_file.open();
+        }
+    }
+    if comment && !has_comment {
+        let comment_file = File::new(&result.citation, "comment");
+        fs::write(comment_file.path(), result.to
     }
 }
 
@@ -71,43 +92,4 @@ pub fn output_bib(source: &str) {
             .to_bib();
         println!("{}", output);
     }
-}
-
-/// add or delete keywords
-/// print the resulting entry, with new keywords in red and deleted keywords in invert color
-pub fn keywords(citation: &str, mut add: Vec<String>, mut del: Vec<String>) {
-    let conn = SqliteBibDB::new(None);
-    let old_entry = conn.get_item(citation).expect(&format!("Cannot find entry {}", &citation));
-    if add.len() > 0 {  // non-exsitng keywords to add
-        add = add.into_iter().filter(
-            |x| !old_entry.keywords.contains(x)
-        ).collect::<Vec<String>>();
-    }
-    let has_new = (add.len() > 0);
-    if del.len() > 0 {  // existing keywords to delete
-        del = del.into_iter().filter(
-            |x| old_entry.keywords.contains(x)
-        ).collect::<Vec<String>>();
-    }
-    let has_del = (del.len() > 0);
-    if !(has_new || has_del) {
-        println!("{}\n\tKeywords: {}", old_entry.to_str(), old_entry.keywords.join(", "));
-        return
-    }
-    if has_new {conn.add_keywords(&old_entry.citation, &add);}
-    if has_del {conn.del_keywords(&old_entry.citation, &del);}
-    let new_entry = conn.get_item(citation).unwrap();
-    let (new_terms, retained_terms): (Vec<String>, Vec<String>) = new_entry.keywords.clone().into_iter()
-        .partition(|x| old_entry.keywords.contains(&x));
-    let deleted_terms = old_entry.keywords.into_iter().filter(|x| !new_entry.keywords.contains(x)).collect::<Vec<String>>();
-    let mut keywords: Vec<(String, String)> = new_terms.into_iter().map(
-        move |x| (x.clone(), format!("{}{}{}", color::Fg(color::Red), x, color::Fg(color::Reset)))
-    ).collect();
-    keywords.extend(deleted_terms.into_iter().map(
-        move |x| (x.clone(), format!("{}{}{}{}{}", color::Fg(color::Blue), style::Invert, x, style::Reset, color::Fg(color::Reset)))
-    ));
-    keywords.extend(retained_terms.into_iter().map(move |x| (x.clone(), x)));
-    keywords.sort();
-    let keywords_str = keywords.into_iter().map(|x| x.1).collect::<Vec<String>>().join(", ");
-    println!("{}\n\tKeywords: {}", new_entry.to_str(), keywords_str);
 }

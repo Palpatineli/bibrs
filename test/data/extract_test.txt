@@ -1,0 +1,13 @@
+---
+title: Neurobiology of MeCP2, from Genes to Synapses
+author: Keji Li
+bibliography: library.bib
+csl: zotero-jcn.csl
+...
+
+The transcription and translation of MECP2 are highly regulated [@ehrhart2016].
+MECP2 is transcribed into two isoforms, a full length e2 and an e1 that's missing one exon but has an earlier start site [@kriaucionis2004].
+Although the two isoforms have area specific distributions even in the brain [@dragich2007], and e1 specific mutations can still cause severe Rett symptoms [@kerr2012], they appear to be mostly interchangeable.
+The lack of e2 does not cause major Rett symptoms [@itoh2012; @kerr2012] and the lack of e1 can be compensated with artificial expression of e2 in a dose-dependent manner [@kerr2012].
+e1 specific mutations causing Rett symptoms can be viewed as a result of low Mecp2 level, as e1 is the predominant transcript in the brain [@dragich2007].
+

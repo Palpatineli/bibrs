@@ -14,10 +14,10 @@ fn search_journal(name: &str) -> Result<Journal> {
     let conn = Connection::open_with_flags(Path::new("data/journal.sqlite"), OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
     conn.query_row_and_then(SEARCH_QUERY, &[&name], |row| {
         Ok(Journal {
-            id: Some(row.get(0)),
-            name: row.get(1),
-            abbr: row.get(2),
-            abbr_no_dot: row.get(3),
+            id: Some(row.get_unwrap(0)),
+            name: row.get_unwrap(1),
+            abbr: row.get_unwrap(2),
+            abbr_no_dot: row.get_unwrap(3),
         })
     })
 }

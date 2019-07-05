@@ -1,5 +1,6 @@
 use std::collections::HashSet;
-use entry_type::EntryType;
+use lazy_static::lazy_static;
+use crate::entry_type::EntryType;
 
 #[derive(Default, Debug)]
 pub struct Person {
