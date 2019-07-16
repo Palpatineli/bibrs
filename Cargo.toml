@@ -6,6 +6,8 @@ edition = "2018"
 
 [dependencies]
 dirs = "2.0"
+globset = "0.4"
+itertools = "0.8"
 latex-to-unicode = {git = "https://github.com/vks/latex-to-unicode.git"}
 lazy_static = "1.3"
 nom-bibtex = "0.2"

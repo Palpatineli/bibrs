@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use structopt::StructOpt;
 
 mod action;
@@ -70,7 +71,7 @@ fn main() {
                                keywords.join(" ").split(",").map(|x| x.trim().to_string()).collect()
                            } else {keywords}),
         Bibrs::Open{id, comment, pdf} => action::open(&id, comment, pdf),
-        Bibrs::Add{keywords} => action::add_paper(keywords),
+        Bibrs::Add{keywords} => action::add_item(keywords),
         Bibrs::Delete{id} => action::delete(&id),
         Bibrs::Output{source, bibtex, simple} => {
             if bibtex { action::output_bib(&source); }
@@ -78,9 +79,9 @@ fn main() {
         },
         Bibrs::Keywords{source, add, del} =>
             action::keywords(&source, add.join(" ").split(",").map(|x| x.trim().to_string())
-                                .filter(|x| x.len() > 0).collect(),
+                                .filter(|x| x.len() > 0).collect::<HashSet<String>>(),
                              del.join(" ").split(",").map(|x| x.trim().to_string())
-                                .filter(|x| x.len() > 0).collect()),
+                                .filter(|x| x.len() > 0).collect::<HashSet<String>>()),
         Bibrs::Init => config::initialize()
     }
 }

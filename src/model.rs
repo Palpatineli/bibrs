@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use lazy_static::lazy_static;
 use crate::entry_type::EntryType;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Person {
     pub id: Option<i32>,
     pub last_name: String,
@@ -10,7 +10,7 @@ pub struct Person {
     pub search_term: String,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Entry {
     pub citation: String,
     pub entry_type: EntryType,
@@ -26,7 +26,7 @@ pub struct Entry {
     pub journal: Option<String>,
     pub authors: Vec<Person>,
     pub editors: Vec<Person>,
-    pub keywords: Vec<String>,
+    pub keywords: HashSet<String>,
     pub extra_fields: Vec<(String, String)>,
     pub files: Vec<(String, String)>,
 }

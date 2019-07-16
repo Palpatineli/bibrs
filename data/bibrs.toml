@@ -9,7 +9,7 @@ opener = "evince"
 [comment]
 folder = "Sync/paper/comment/"
 extension = ["txt"]
-opener = "gvim"
+opener = "nvim-qt"
 
 [temp_pdf]
 folder = "Downloads/"

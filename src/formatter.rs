@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use termion::color;
+use itertools::Itertools;
 use crate::model::{Entry, Person};
 use crate::util::ToTitleCase;
 
@@ -42,6 +44,11 @@ impl BibPrint for Vec<Person> {
 impl BibPrint for Vec<String> {
     fn to_str(&self) -> String { self.join(", ") }
     fn to_bib(&self) -> String { self.join(", ")}
+}
+
+impl BibPrint for HashSet<String> {
+    fn to_str(&self) -> String { self.iter().join(", ") }
+    fn to_bib(&self) -> String { self.iter().join(", ")}
 }
 
 pub trait LabeledPrint { fn labeled_to_str(&self, searched: &[String]) -> String; }
@@ -108,6 +115,14 @@ impl Entry {
         output.concat().to_string()
     }
 
+    pub fn to_citation(&self) -> String {
+        let last_name: &str = match self.authors.get(0).or_else(|| self.editors.get(0)) {
+            Some(x) => &x.search_term,
+            None => self.title.split_whitespace().next().expect("Error: Nothing in title!")
+        };
+        format!("{}{}", last_name, self.year)
+    }
+
     pub fn to_str(&self) -> String {
         let mut output: Vec<String> = Vec::new();
         if self.authors.len() > 0 {
@@ -115,10 +130,7 @@ impl Entry {
         } else if self.editors.len() > 0 {
             output.push(self.editors.to_str());
         };
-        output.push(". ".to_owned());
-        output.push(format!("({}).", self.year));
-        output.push(self.title.to_title().to_string());
-        output.push(". ".to_owned());
+        output.push(format!(". ({}).{}. ", self.year, self.title.to_title()));
         if let Some(ref journal) = self.journal { output.push(journal.clone()); }
         else if let Some(ref booktitle) = self.booktitle { output.push(booktitle.clone()); };
         output.concat()
@@ -131,10 +143,7 @@ impl Entry {
         } else if self.editors.len() > 0 {
             output.push(self.editors.labeled_to_str(searched));
         };
-        output.push(". ".to_owned());
-        output.push(format!("({}).", self.year));
-        output.push(self.title.to_title().to_string());
-        output.push(". ".to_owned());
+        output.push(format!(". ({}){}. ", self.year, self.title.to_title()));
         if let Some(ref journal) = self.journal { output.push(journal.clone()); }
         else if let Some(ref booktitle) = self.booktitle { output.push(booktitle.clone()); };
         output.concat().trim_str()

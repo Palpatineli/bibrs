@@ -1,18 +1,55 @@
-mod journal;
+pub mod journal;
+pub mod add_item;
 
 use std::str;
 use std::path::PathBuf;
-use rusqlite::{params, Connection, Result};
-use rusqlite::types::Value::{Integer, Text};
+use std::collections::HashSet;
+use std::convert::From;
+use rusqlite::{params, Connection, Result, Row};
 use rusqlite::types::ToSql;
 
 use crate::model::{Entry, Person};
 use crate::entry_type::EntryType;
 use crate::config::{CONFIG, Config};
+use journal::Journal;
 
 pub enum ConfigOrPath {
     Config(Config),
     Path(PathBuf),
+}
+
+impl From<&Row<'_>> for Person {
+    fn from(row: &Row) -> Person {
+        Person{
+            id: row.get_unwrap::<_, Option<i32>>(1),
+            last_name: row.get_unwrap(2),
+            first_name: row.get_unwrap(3),
+            search_term: row.get_unwrap::<_, String>(4)}
+    }
+}
+
+impl From<&Row<'_>> for Entry {
+    fn from(row: &Row) -> Entry {
+        Entry{
+            citation: row.get_unwrap::<_, String>(0),
+            entry_type: EntryType::parse(&row.get_unwrap::<_, String>(1)),
+            title: row.get_unwrap::<_, String>(2),
+            booktitle: row.get_unwrap::<_, Option<String>>(3),
+            year: row.get_unwrap::<_, i32>(4),
+            month: row.get_unwrap::<_, Option<i32>>(5),
+            chapter: row.get_unwrap::<_, Option<i32>>(6),
+            edition: row.get_unwrap::<_, Option<i32>>(7),
+            volume: row.get_unwrap::<_, Option<i32>>(8),
+            number: row.get_unwrap::<_, Option<i32>>(9),
+            pages: row.get_unwrap::<_, Option<String>>(10),
+            journal: row.get_unwrap::<_, Option<String>>(11),
+            authors: Vec::new(),
+            editors: Vec::new(),
+            keywords: HashSet::new(),
+            files: Vec::new(),
+            extra_fields: Vec::new(),
+        }
+    }
 }
 
 pub struct SqliteBibDB {
@@ -20,14 +57,17 @@ pub struct SqliteBibDB {
 }
 
 pub trait BibDataBase {
+    fn add_item(&self, entry: &Entry, journal_id: Option<i32>) -> Result<()>;
     fn get_item(&self, id: &str) -> Result<Entry>;
-    fn search(&self, authors: &[String], keywords: &[String]) -> Vec<Entry>;
+    fn search(&self, authors: &[String], keywords: &[String]) -> Result<Vec<Entry>>;
     fn delete(&self, id: &str) -> Result<()>;
-    fn add_keywords(&self, citation: &str, terms: &Vec<String>) -> Result<()>;
-    fn del_keywords(&self, citation: &str, terms: &Vec<String>) -> Result<()>;
-    fn get_files(&self, citation: &str) -> Vec<(String, String)>;
+    fn add_keywords<T: AsRef<str>>(&self, citation: &str, terms: &[T]) -> Result<()>;
+    fn del_keywords<T: AsRef<str>>(&self, citation: &str, terms: &[T]) -> Result<()>;
+    fn get_files(&self, citation: &str) -> Result<Vec<(String, String)>>;
+    fn add_file(&self, citation: &str, name: &str, file_type: &str) -> Result<()>;
 }
 
+/// insert a number of question marks
 macro_rules! multi_param {
     ($no:expr) => {{
         let mut out: Vec<&str> = Vec::new();
@@ -36,6 +76,7 @@ macro_rules! multi_param {
     }}
 }
 
+/// params! for vectors
 macro_rules! build_param {
     ($(($terms:ident, $no:expr)),+) => {{
         let mut out: Vec<&dyn ToSql> = Vec::new();
@@ -78,6 +119,23 @@ impl SqliteBibDB {
         (authors.into_iter().map(|(person, _)| person).collect(), editors.into_iter().map(|(person, _)| person).collect())
     }
 
+    /// get people with the same last name
+    pub fn search_lastname(&self, search_term: &str) -> Result<Vec<Person>> {
+        let mut query = self.conn.prepare_cached("SELECT id, last_name, first_name, search_term FROM persons WHERE search_term = ? ORDER BY first_name;")?;
+        let persons = query.query_map(&[&search_term], |row| Ok(Person::from(row)))?.collect::<Result<Vec<Person>>>();
+        persons
+    }
+
+    pub fn search_person(&self, person: &Person) -> Result<Person> {
+        let mut query = self.conn.prepare_cached("SELECT id, last_name, first_name, search_term FROM persons WHERE search_term = ? AND first_name = ?;")?;
+        query.query_row(&[&person.search_term, &person.first_name], |row| Ok(Person::from(row)))
+    }
+
+    pub fn add_person(&self, person: &Person) -> Result<i32> {
+        let mut query = self.conn.prepare_cached("INSERT INTO persons (last_name, first_name, search_term) VALUES (?, ?, ?);")?;
+        query.insert(&[&person.last_name, &person.first_name, &person.search_term]).map(|x| x as i32)
+    }
+
     fn get_keywords(&self, id: &str) -> Vec<String> {
         let mut query = self.conn.prepare_cached(
             "SELECT text FROM item_keywords JOIN keywords ON item_keywords.keyword_id=keywords.id WHERE item_id=? ORDER BY text ASC").unwrap();
@@ -96,90 +154,121 @@ impl SqliteBibDB {
     /// keywords (to add relation)
     /// Returns:
     ///     (Vec<non_existing_keys>, Vec<unrelated_existing_keys>)
-    fn exist_keywords(&self, citation: &str, terms: &Vec<String>) -> (Vec<String>, Vec<i64>) {
+    fn exist_keywords<T: AsRef<str>>(&self, terms: &[T]) -> (Vec<String>, Vec<i64>) {
         let mut query = self.conn.prepare_cached(
             &format!("
                 SELECT id, text
                   FROM keywords
                  WHERE text IN ({})", multi_param!(terms.len()))).unwrap();
-        let rows = query.query_map(&(terms.iter().map(|x| x as &dyn ToSql).collect::<Vec<&dyn ToSql>>()),
-            |row| Ok((row.get_unwrap::<_, i64>(0), row.get_unwrap::<_, String>(1))))
-            .unwrap().collect::<Result<Vec<(i64, String)>>>().unwrap();
+        let search_terms = terms.iter().map(|x| x.as_ref()).collect::<Vec<&str>>();
         let mut ids: Vec<i64> = Vec::new();
         let mut texts: Vec<String> = Vec::new();
-        for (id, text) in rows.into_iter() {ids.push(id); texts.push(text);}
-        let non_existing: Vec<String> = terms.iter().filter(|x| !texts.contains(x)).map(|x| x.clone()).collect();
+        query.query_map(&search_terms, |row| Ok((row.get_unwrap::<_, i64>(0), row.get_unwrap::<_, String>(1)))).unwrap()
+            .for_each(|r| { let (x, y) = r.unwrap(); ids.push(x); texts.push(y)});
+        let non_existing: Vec<String> = terms.iter().map(|x| x.as_ref().to_string()).filter(|x| !texts.contains(x)).collect();
         (non_existing, ids)
     }
-}
 
-macro_rules! get_col {
-    ($row:ident, $no:expr, Integer) => {
-        if let Integer(temp) = $row.get_unwrap($no) {Some(temp as i32)} else {None}
-    };
-    ($row:ident, $no:expr, Text) => {
-        if let Text(temp) = $row.get_unwrap($no) {Some(temp as String)} else {None}
+    fn add_journal(&self, name: &str) -> Result<i32> {
+        let mut query = self.conn.prepare_cached("
+            SELECT * FROM journals AS journals_full WHERE journals_full.name = ?
+            UNION SELECT * FROM journals AS journals_abbr WHERE journals_abbr.abbr = ?
+            UNION SELECT * FROM journals AS journals_abbr_nd WHERE journals_abbr_nd.abbr_no_dot LIKE ?;")?;
+        let mut insert = self.conn.prepare_cached("INSERT INTO journals (name, abbr, abbr_no_dot) VALUES (?, ?, ?);")?;
+        let journal = query.query_row(&[name, name, &format!("%{}%", name)], Journal::from_row);
+        match journal {
+            Ok(journal) => Ok(journal.id.unwrap()),
+            Err(_) => {
+                let journal = Journal::search(name)?;
+                insert.insert(&[journal.name, journal.abbr, journal.abbr_no_dot])
+                    .map(|x| x as i32)
+            }
+        }
+    }
+
+    fn add_extra_fields(&self, citation: &str, extra_fields: &Vec<(String, String)>) -> Result<()> {
+        let mut insert_query = self.conn.prepare_cached("REPLACE INTO extra_fields (item_id, field, value) VALUES (?, ?, ?)")?;
+        for (field, value) in extra_fields.iter() {
+            insert_query.insert(&[citation, &field, &value])?;
+        };
+        Ok(())
     }
 }
 
 impl BibDataBase for SqliteBibDB {
+    fn add_item(&self, entry: &Entry, journal_id: Option<i32>) -> Result<()> {
+        let mut insert_query = self.conn.prepare_cached("
+            INSERT INTO items (citation, entry_type, title, booktitle, year, month, chapter, edition,
+                               volume, \"number\", pages, journal_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?);")?;
+        insert_query.query(params![&entry.citation, &entry.entry_type.to_string(), &entry.title, &entry.booktitle, &entry.year,
+            &entry.month, &entry.chapter, &entry.edition, &entry.volume, &entry.number, &entry.pages, &journal_id])?;
+        let mut insert_relation = self.conn.prepare_cached("INSERT INTO item_persons (item_id, person_id, order_seq, is_editor) VALUES (?, ?, ?, ?);")?;
+        for (people, is_editor) in [(&entry.authors, false), (&entry.editors, true)].iter() {
+            for (order, person) in people.iter().enumerate() {
+                let author_id = match self.search_person(&person) {
+                    Ok(x) => x.id.expect("existing person row doesn't have rowid?"),
+                    Err(_) => self.add_person(person)?,
+                };
+                insert_relation.insert(params![&entry.citation, &author_id, &(order as isize), &is_editor])?;
+            }
+        }
+        self.add_keywords(&entry.citation, &entry.keywords.iter().cloned().collect::<Vec<String>>())?;
+        self.add_extra_fields(&entry.citation, &entry.extra_fields)?;
+        for (name, file_type) in entry.files.iter() { self.add_file(&entry.citation, name, file_type)?; }
+        Ok(())
+    }
+
     fn get_item(&self, id: &str) -> Result<Entry> {
-        const ITEM_QUERY: &str = "
+        let mut query = self.conn.prepare_cached("
             SELECT citation, entry_type, title, booktitle, year, month, chapter, edition, volume, \"number\", pages,
                    journals.name
               FROM items
                    LEFT JOIN journals ON items.journal_id=journals.id
              WHERE citation = ?
-             LIMIT 1";
-        let mut query = self.conn.prepare_cached(ITEM_QUERY).unwrap();
+             LIMIT 1")?;
         query.query_row(&[&id],
             |row| {
                 let (authors, editors) = self.get_people(id);
-                Ok(Entry{
-                    citation: row.get::<_, String>(0).unwrap(),
-                    entry_type: EntryType::parse(&row.get::<_, String>(1).unwrap()),
-                    title: row.get(2).unwrap(),
-                    booktitle: get_col!(row, 3, Text),
-                    year: row.get(4).unwrap(),
-                    month: get_col!(row, 5, Integer),
-                    chapter: get_col!(row, 6, Integer),
-                    edition: get_col!(row, 7, Integer),
-                    volume: get_col!(row, 8, Integer),
-                    number: get_col!(row, 9, Integer),
-                    pages: get_col!(row, 10, Text),
-                    journal: get_col!(row, 11, Text),
-                    authors,
-                    editors,
-                    keywords: self.get_keywords(id),
-                    files: Vec::new(),
-                    extra_fields: self.get_extra_fields(id),
-                })
+                let mut entry = Entry::from(row);
+                entry.authors.extend(authors.into_iter());
+                entry.editors.extend(editors.into_iter());
+                entry.keywords.extend(self.get_keywords(id).into_iter());
+                entry.extra_fields.extend(self.get_extra_fields(id).into_iter());
+                Ok(entry)
             }
         )
     }
 
-    fn get_files(&self, citation: &str) -> Vec<(String, String)> {
-        const FILE_QUERY: &str = "
+    fn get_files(&self, citation: &str) -> Result<Vec<(String, String)>> {
+        let mut file_query = self.conn.prepare_cached("
             SELECT name, object_type
               FROM files
-             WHERE item_id=?";
-        let mut file_query = self.conn.prepare_cached(FILE_QUERY).unwrap();
+             WHERE item_id=?")?;
         let files = file_query.query_map(&[&citation], |row| Ok((row.get_unwrap::<_, String>(0), row.get_unwrap::<_, String>(1)))).unwrap()
-            .collect::<Result<Vec<(String, String)>>>().unwrap();
-        files
+            .collect::<Result<Vec<(String, String)>>>()?;
+        Ok(files)
+    }
+
+    fn add_file(&self, citation: &str, name: &str, file_type: &str) -> Result<()> {
+        let mut insert_query = self.conn.prepare_cached("INSERT INTO files (item_id, name, object_type) VALUES (?, ?, ?)")?;
+        insert_query.insert(params![citation, name, file_type])?;
+        Ok(())
     }
 
     fn delete(&self, id: &str) -> Result<()> {
-        const DELETE_QUERY: &str = "
-            DELETE i, ip 
+        let mut query = self.conn.prepare_cached("
+            DELETE i, ip, ik
               FROM items AS i
              INNER JOIN item_persons AS ip
+             INNER JOIN item_keywords AS ik
                 ON items.citation=item_persons.item_id
-             WHERE items.citation=?";
-        self.conn.execute(DELETE_QUERY, &[&id]).map(|_| ())
+                ON items.citation=item_keywords.item_id
+             WHERE items.citation=?")?;
+        query.query(&[&id]).map(|_| ())
     }
 
-    fn search(&self, authors: &[String], keywords: &[String]) -> Vec<Entry> {
+    fn search(&self, authors: &[String], keywords: &[String]) -> Result<Vec<Entry>> {
         let author_no = authors.len() as isize;
         let keyword_no = keywords.len() as isize;
         let (query_str, terms): (String, Vec<&dyn ToSql>) = if author_no > 0 {
@@ -224,28 +313,23 @@ impl BibDataBase for SqliteBibDB {
                 HAVING count(*) = ?", multi_param!(keyword_no)),
              build_param!((keywords, &keyword_no)))
         } else { panic!("please search with authors and/or keywords!") };
-        let mut query = self.conn.prepare_cached(&query_str).unwrap();
-        let results = query.query_map(&terms, |row| row.get::<_, String>(0)).unwrap()
-            .map(|term| self.get_item(&(term.unwrap()))).collect::<Result<Vec<Entry>>>().unwrap();
-        results
+        let mut query = self.conn.prepare_cached(&query_str)?;
+        let results = query.query_map(&terms, |row| row.get::<_, String>(0))?
+            .map(|term| self.get_item(&(term?))).collect::<Result<Vec<Entry>>>()?;
+        Ok(results)
     }
 
-    fn add_keywords(&self, citation: &str, terms: &Vec<String>) -> Result<()> {
-        let entry = self.get_item(&citation)?;
-        let new_terms = terms.iter().filter(|x| !entry.keywords.contains(x))
-            .map(|x| x.clone()).collect();
-        let (unexist, unrelated_ids) = self.exist_keywords(&citation, &new_terms);
+    fn add_keywords<T: AsRef<str>>(&self, citation: &str, terms: &[T]) -> Result<()> {
+        let (unexist, unrelated_ids) = self.exist_keywords(terms);
         let mut query_insert_key = self.conn.prepare_cached("INSERT INTO keywords (text) VALUES (?)").unwrap();
         let row_ids: Vec<i64> = unexist.iter().map(|x| query_insert_key.insert(&[x]).unwrap()).collect();
         let mut query_insert_relation = self.conn.prepare_cached("INSERT INTO item_keywords (item_id, keyword_id) VALUES (?, ?)").unwrap();
-        for id in unrelated_ids.iter().chain(row_ids.iter()) {
-            query_insert_relation.execute(params![citation, id])?;
-        }
+        for id in unrelated_ids.iter().chain(row_ids.iter()) { query_insert_relation.execute(params![citation, id])?; }
         Ok(())
     }
 
     /// Delete keywords associations
-    fn del_keywords(&self, citation: &str, terms: &Vec<String>) -> Result<()> {
+    fn del_keywords<T: AsRef<str>>(&self, citation: &str, terms: &[T]) -> Result<()> {
         let mut query_del_relation = self.conn.prepare_cached(
             &format!("
                 DELETE FROM item_keywords
@@ -257,8 +341,8 @@ impl BibDataBase for SqliteBibDB {
                         AND keywords.text IN ({})
                  )", multi_param!(terms.len()))).unwrap();
         let mut params: Vec<&dyn ToSql> = vec![&citation];
-        let sql_terms = terms.iter().map(|x| x as &dyn ToSql).collect::<Vec<&dyn ToSql>>();
-        params.extend(sql_terms.into_iter());
+        let sql_terms: Vec<String> = terms.iter().map(|x| x.as_ref().to_string()).collect();
+        sql_terms.iter().for_each(|x| params.push(x));
         query_del_relation.execute(&params)?;
         Ok(())
     }
@@ -267,7 +351,9 @@ impl BibDataBase for SqliteBibDB {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::iter::FromIterator;
     use crate::config::read_config;
+    use itertools::Itertools;
 
     macro_rules! vec_str {
         ($($word:expr),+) => {{
@@ -300,9 +386,9 @@ mod tests {
         assert_eq!(entry.citation, "stein2004");
         assert_eq!(entry.entry_type, EntryType::Incollection);
         assert_eq!(entry.authors[1].last_name, "stanford");
-        assert_eq!(entry.keywords[0], "multisensory");
+        assert!(entry.keywords.contains("multisensory"));
         // test search
-        let entries = conn.search(&vec_str!["casagrande", "rosa"], &Vec::<String>::new());
+        let entries = conn.search(&vec_str!["casagrande", "rosa"], &Vec::<String>::new()).expect("search fail at the db level!");
         let ref entry = &entries[0];
         println!("entry: {}", entry.to_str());
         assert_eq!(entry.authors[0].id, Some(690));
@@ -318,12 +404,11 @@ mod tests {
         conn.del_keywords("walker1938", &vec_str!["bullshit", "atlas", "review"])
             .expect("can't delete keywords");
         let entry = conn.get_item("walker1938").unwrap();
-        let mut keywords = entry.keywords.clone();
-        keywords.sort();
-        assert_eq!(keywords, vec_str!["macaque", "pulvinar", "thalamus"]);
+        let keywords = entry.keywords.clone();
+        assert_eq!(keywords, HashSet::from_iter(["macaque", "pulvinar", "thalamus"].into_iter().map(|x| x.to_string())));
         conn.del_keywords("walker1938", &vec_str!["pulvinar", "thalamus", "macaque"])
             .expect("can't delete additional keywords");
         let entry = conn.get_item("walker1938").unwrap();
-        println!("Leftover keywords include: {}", entry.keywords.join(", "));
+        println!("Leftover keywords include: {}", entry.keywords.iter().join(", "));
     }
 }

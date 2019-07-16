@@ -1,5 +1,5 @@
 #![allow(unused)]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::Path;
 use std::io::prelude::*;
@@ -65,9 +65,7 @@ fn load_pages(input: &str) -> String {
     }
 }
 
-fn load_keywords(input: &str) -> Vec<String> {
-    input.split(", ").map(|s| s.to_owned()).collect::<Vec<String>>()
-}
+fn load_keywords(input: &str) -> HashSet<String> { input.split(", ").map(|s| s.to_owned()).collect() }
 
 fn read_file(filename: &Path) -> String {
     let mut content = String::new();
@@ -89,7 +87,7 @@ impl Entry {
     pub fn from_bib(bib_entry: &Bibliography) -> Self {
         let citation = strip_accent(bib_entry.citation_key());
         let entry_type = EntryType::parse(bib_entry.entry_type());
-        let mut entry = Entry{citation: citation, entry_type: entry_type, ..Default::default()};
+        let mut entry = Entry{citation, entry_type, ..Default::default()};
         for (field_name, content) in bib_entry.tags().into_iter() {
             match field_name.as_ref() {
                 "title" => entry.title = load_title(content),
