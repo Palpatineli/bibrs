@@ -8,45 +8,31 @@ use termion::color;
 use crate::formatter::{BibPrint, LabeledPrint};
 use crate::model::Entry;
 use crate::database::{SqliteBibDB, BibDataBase};
-use crate::database::add_item::{InsertionStart, InsertionWithName, InsertionWithJournal, InsertionWithPeople, CitationError};
 use crate::reader::{pandoc::read_pandoc, bibtex::read_entries};
-use crate::config::{self, CONFIG};
+use crate::config::{self, CONFIG, TEST_CONFIG};
 use crate::file::{File, BibFile};
 
 mod keywords;
+mod add_item;
+pub use add_item::add_item;
 pub use self::keywords::keywords;
 
-macro_rules! fg {
-    ($col:ident, $content:expr) => {
-        format!("{}{}{}", color::Fg(color::$col), $content, color::Fg(color::Reset))
-    }
-}
-
-macro_rules! bg {
-    ($col:ident, $content:expr) => {
-        format!("{}{}{}", color::Bg(color::$col), $content, color::Bg(color::Reset))
-    }
-}
-
-pub fn search(mut author: Vec<String>, mut keywords: Vec<String>) {
-    let conn = SqliteBibDB::new(None);
+pub fn search(conn: &SqliteBibDB, mut author: Vec<String>, mut keywords: Vec<String>) -> String {
     author.retain(|x| x.len() > 0);
     keywords.retain(|x| x.len() > 0);
     if author.len() == 0 && keywords.len() == 0 {
-        println!("Search by author last names either/or keywords!");
-        return
+        return "Search by author last names either/or keywords!".to_string();
     }
     let results = conn.search(&author, &keywords).expect("Search Fail!");    
     if results.len() == 0 {
-        println!("Entries not found for authors [{}] and keywords [{}]",
-                 author.join(", "), keywords.join(", "));
+        return format!("Entries not found for authors [{}] and keywords [{}]",
+            author.join(", "), keywords.join(", "));
     } else {
-        println!("{}", results.iter().map(|x| x.labeled_to_str(&author)).collect::<Vec<String>>().join("\n"));
+        return format!("{}", results.iter().map(|x| x.labeled_to_str(&author)).collect::<Vec<String>>().join("\n"));
     }
 }
 
-pub fn open(id: &str, comment: bool, pdf: bool) {
-    let conn = SqliteBibDB::new(None);
+pub fn open(conn: &SqliteBibDB, id: &str, comment: bool, pdf: bool) {
     let result = conn.get_item(&id).expect(&format!("Cannot find entry with id {}", &id));
     let files = conn.get_files(&result.citation).expect("Find file record in db fail!");
     let mut has_comment = false;
@@ -69,49 +55,7 @@ pub fn open(id: &str, comment: bool, pdf: bool) {
     }
 }
 
-pub fn add_item(keywords: Vec<String>) {
-    let bib_file = File::temp("temp_bib").expect(&format!("Cannot find bibtex file in {:?}", CONFIG.temp_bib.folder));
-    let pdf_file: Option<File> = File::temp("temp_pdf").ok();
-    let pdf = File::temp("temp_pdf").ok();
-    let mut entries = read_entries(&bib_file.path());
-    let mut entry = entries.pop().expect("empty bibtext file in download folder, or error in the bibtex file");
-    entry.keywords.extend(keywords.into_iter());
-    let mut insert = InsertionStart::new(entry, None);
-    // start interactive addtion
-    println!("New Item: {}\n", insert.entry.to_str());
-    if let Some(file) = pdf_file { println!("\thas file: {}\n", file.path().to_string_lossy()) }
-    println!("{}bort, {}ontinue?\n", fg!(Red, "(a)"), fg!(Blue, "(c)")); 
-    let stdin = io::stdin();
-    let mut input_string = String::new();
-    match stdin.read_line(&mut input_string) { Ok(_) => if input_string.starts_with("c") {} else {return}, Err(_) => return };
-    // solve naming conflict
-    let mut citation = insert.entry.to_citation();
-    let insert = 'citation_check: loop {
-        match insert.check_citation(&citation) {
-            Ok(insert) => break 'citation_check insert,
-            Err(CitationError::Citation(insert_old, entry)) => {
-                insert = insert_old;
-                println!("[{}] naming conflict! {}\nexisting entry: {}\n{}bort; {}pdate entry; input new citation?",
-                         fg!(Magenta, "Conflict"), citation, entry.to_str(), fg!(Red, "(a)"), fg!(Blue, "(u)"));
-                match stdin.read_line(&mut input_string) {
-                    Ok(_) => {
-                        match input_string.as_ref() {
-                            "a" => return,
-                            "u" => {
-                            },
-                            x => { citation = x.to_owned(); }
-                        }
-                    },
-                    Err(_) => return
-                };
-            },
-            Err(_) => panic!("Database Error on item insertion!")
-        }
-    };
-}
-
-pub fn delete(id: &str) {
-    let conn = SqliteBibDB::new(None);
+pub fn delete(conn: &SqliteBibDB, id: &str) {
     if let Ok(results) = conn.get_item(id) {
         conn.delete(id).expect(&format!("Failed to delete existing entry {}!", id));
     } else {
@@ -119,34 +63,46 @@ pub fn delete(id: &str) {
     }
 }
 
-pub fn output_str(source: &str) {
-    let conn = SqliteBibDB::new(None);
+pub fn output_str(conn: &SqliteBibDB, source: &str) -> String {
     if PathBuf::from(source).exists() {
         read_pandoc(&source.into())
             .expect(&format!("Failed to read file for citation: {}", source))
-            .iter().for_each(move |x| match conn.get_item(x) {
-                Ok(e) => println!("{}", e.to_str()),
-                Err(_) => println!("Entry not found for {}!", x),
-            })
+            .iter().map(move |x| match conn.get_item(x) {
+                Ok(e) => format!("{}", e.to_str()),
+                Err(_) => format!("Entry not found for {}!", x),
+            }).collect::<Vec<String>>().join("\n")
     } else {
         let output = conn.get_item(source).expect(&format!("Cannot find entry {}", source))
             .to_str();
-        println!("{}", output);
+        format!("{}", output)
     }
 }
 
-pub fn output_bib(source: &str) {
-    let conn = SqliteBibDB::new(None);
+pub fn output_bib(conn: &SqliteBibDB, source: &str) -> String {
     if PathBuf::from(source).exists() {
         read_pandoc(&source.into())
             .expect(&format!("Failed to read file for citation: {}", source))
-            .iter().for_each(move |x| match conn.get_item(x) {
-                Ok(e) => println!("{}", e.to_bib()),
-                Err(_) => println!("Entry not found for {}!", x),
-            })
+            .iter().map(move |x| match conn.get_item(x) {
+                Ok(e) => format!("{}", e.to_bib()),
+                Err(_) => format!("Entry not found for {}!", x),
+            }).collect::<Vec<String>>().join("\n")
     } else {
         let output = conn.get_item(source).expect(&format!("Cannot find entry {}", source))
             .to_bib();
-        println!("{}", output);
+        format!("{}", output)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    #[test]
+    fn test_search() {
+        let config = Config::new(Some(TEST_CONFIG.to_path_buf()));
+        let conn = SqliteBibDB::new(Some(config.database));
+        let res = search(&conn, vec!["Sur".to_string()], vec![]);
+        println!("Result = {}", res);
     }
 }

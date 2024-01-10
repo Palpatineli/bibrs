@@ -20,7 +20,7 @@ pub fn read_pandoc(file_path: &PathBuf) -> Result<Vec<String>, Error> {
             if result.status.success() {
                 String::from_utf8_lossy(&result.stdout).into_owned()
             } else {
-                panic!(result.stderr)
+                std::panic::panic_any(result.stderr)
             }
         },
         _ => panic!("Inputs should be either json or markdown!")

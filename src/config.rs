@@ -3,7 +3,7 @@ use std::io::{Read, stdin, Error as IOError};
 use std::path::PathBuf;
 
 use serde_derive::Deserialize;
-use dirs::home_dir;
+use dirs::{home_dir, config_dir};
 use rusqlite::Connection;
 use lazy_static::lazy_static;
 
@@ -24,27 +24,28 @@ pub struct Config {
     pub temp_bib: FileHandler,
 }
 
-pub fn read_config(config_path: Option<PathBuf>) -> Config {
-    let mut config_file;
-    if let Some(real_config_path) = config_path {
-        config_file = File::open(&real_config_path).expect(
-            &format!("Specified config file not found at {}!", real_config_path.to_string_lossy()));
-    } else {
-        let mut real_config_path = home_dir().unwrap().join(".config/bibrs.toml");
-        if !real_config_path.exists() { real_config_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/bibrs.toml"); }
-        config_file = File::open(&real_config_path)
-            .expect(&format!("can't open the config file at {}!", real_config_path.to_string_lossy()));
+lazy_static!{
+    pub static ref DEFAULT_CONFIG: PathBuf = config_dir().unwrap().join("bibrs/bibrs.toml");
+    pub static ref TEST_CONFIG: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/bibrs.toml");
+}
+
+impl Config {
+    pub fn new(config_path: Option<PathBuf>) -> Config {
+        let mut config_file;
+        let config_path = config_path.unwrap_or(DEFAULT_CONFIG.to_path_buf());
+        config_file = File::open(&config_path).expect(
+            &format!("Specified config file not found at {}!", config_path.to_string_lossy()));
+        let mut config_str = String::new();
+        config_file.read_to_string(&mut config_str).expect("Failed to read config");
+        let mut output: Config = toml::from_str(&config_str).unwrap();
+        output.database = home_dir().unwrap().join(&output.database);
+        output.journal_db = home_dir().unwrap().join(&output.journal_db);
+        output.pdf.folder = home_dir().unwrap().join(&output.pdf.folder);
+        output.comment.folder = home_dir().unwrap().join(&output.comment.folder);
+        output.temp_pdf.folder = home_dir().unwrap().join(&output.temp_pdf.folder);
+        output.temp_bib.folder = home_dir().unwrap().join(&output.temp_pdf.folder);
+        return output
     }
-    let mut config_str = String::new();
-    config_file.read_to_string(&mut config_str).expect("Failed to read config");
-    let mut output: Config = toml::from_str(&config_str).unwrap();
-    output.database = home_dir().unwrap().join(&output.database);
-    output.journal_db = home_dir().unwrap().join(&output.journal_db);
-    output.pdf.folder = home_dir().unwrap().join(&output.pdf.folder);
-    output.comment.folder = home_dir().unwrap().join(&output.comment.folder);
-    output.temp_pdf.folder = home_dir().unwrap().join(&output.temp_pdf.folder);
-    output.temp_bib.folder = home_dir().unwrap().join(&output.temp_pdf.folder);
-    return output
 }
 
 pub fn initialize() {
@@ -63,18 +64,18 @@ pub fn initialize() {
 
 /// load config from xdg_config, if doesn't exist then copy default config from crate
 fn init_config() -> Result<Config, IOError> {
-    let config_path = home_dir().unwrap().join(".config/bibrs.toml");
+    let config_path = DEFAULT_CONFIG.to_path_buf();
     if !config_path.exists() {
         println!("Moving config file to ~/.config/bibrs.toml");
         copy(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/bibrs.toml"), &config_path)?;
     }
-    Ok(read_config(Some(config_path)))
+    Ok(Config::new(Some(config_path)))
 }
 
 /// create pdf and comment folders if they do not exist
 fn init_folders(config: &Config) -> Result<(), IOError> {
     for path in &[&config.pdf.folder, &config.comment.folder] {
-        let target_path = PathBuf::from(path.clone());
+        let target_path = PathBuf::from(path);
         if target_path.exists() {
             println!("pdf folder exists, not creaeting.");
         } else {
@@ -99,7 +100,7 @@ fn init_database(config: &Config) -> Result<(), IOError> {
 }
 
 lazy_static! {
-    pub static ref CONFIG: Config = read_config(None);
+    pub static ref CONFIG: Config = Config::new(None);
 }
 
 #[cfg(test)]
@@ -107,7 +108,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_config() {
-        let temp_config = read_config(Some("test/data/bibrs-test.toml".into()));
+        let temp_config = Config::new(Some("test/data/bibrs-test.toml".into()));
         assert_eq!(temp_config.comment.extension[0], ".txt");
         assert_eq!(temp_config.pdf.folder, PathBuf::from("/home/palpatine/Sync/Paper_test/pdf/"));
     }

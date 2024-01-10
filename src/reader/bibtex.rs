@@ -47,8 +47,10 @@ fn load_title(input: &str) -> String {
 }
 
 fn load_pages(input: &str) -> String {
-    /// force pages formatting 123-126, 123-6, 123:126, 123--126, 123_126 to 123-126
-    lazy_static!{ static ref PAGE_RE: Regex = Regex::new(r#"^(\w*)(\d+)[-:_]{1,2}(\d+)$"#).unwrap();}
+    lazy_static!{
+        // force pages formatting 123-126, 123-6, 123:126, 123--126, 123_126 to 123-126
+        static ref PAGE_RE: Regex = Regex::new(r#"^(\w*)(\d+)[-:_]{1,2}(\d+)$"#).unwrap();
+    }
     // don't change pages in the form xx.xxx/xx.xxx
     if input.contains('.') || input.contains('/') {
         input.to_owned()
@@ -104,7 +106,7 @@ impl Entry {
                 "volume" => entry.volume = Some(content.parse::<i32>().unwrap()),
                 "journal" => entry.journal = Some(content.to_owned()),
                 "id" | "publisher" | "school" | "insititution" | "note" | "url" | "series" | "address" | "howpublished" |
-                     "organization" => entry.extra_fields.push((field_name.to_owned(), content.to_owned())),
+                     "organization" => {entry.extra_fields.insert(field_name.to_owned(), content.to_owned());},
                 _ => continue,
             }
         }
@@ -158,7 +160,6 @@ mod tests {
         assert_eq!(entries[0].authors[0].first_name, "albert");
         assert_eq!(entries[0].journal, Some("Annalen der Physik".to_owned()));
         assert_eq!(entries[0].year, 1905);
-        assert_eq!(entries[1].extra_fields.iter().filter(|x| x.0 == "address")
-            .collect::<Vec<&(String, String)>>()[0].1, "Reading, Massachusetts");
+        assert_eq!(entries[1].extra_fields.get("address").unwrap(), "Reading, Massachusetts");
     }
 }

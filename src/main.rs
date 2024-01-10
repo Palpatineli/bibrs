@@ -1,3 +1,5 @@
+#![feature(trait_alias)]
+#[doc=include_str!("../README.md")]
 use std::collections::HashSet;
 use structopt::StructOpt;
 
@@ -9,6 +11,7 @@ mod file;
 mod formatter;
 mod model;
 mod reader;
+mod ui;
 mod util;
 
 #[derive(StructOpt, Debug, PartialEq)]
@@ -64,18 +67,20 @@ enum Bibrs {
 
 fn main() {
     let opt = Bibrs::from_args();
+    let conn = database::SqliteBibDB::new(None);
     match opt {
         Bibrs::Search{authors, keywords} =>
-            action::search(authors.join(" ").split(",").map(|x| x.trim().to_string()).collect(),
+            println!("{}", action::search(&conn,
+                    authors.join(" ").split(",").map(|x| x.trim().to_string()).collect(),
                            if keywords.len() > 0 {
                                keywords.join(" ").split(",").map(|x| x.trim().to_string()).collect()
-                           } else {keywords}),
-        Bibrs::Open{id, comment, pdf} => action::open(&id, comment, pdf),
+                           } else {keywords})),
+        Bibrs::Open{id, comment, pdf} => action::open(&conn, &id, comment, pdf),
         Bibrs::Add{keywords} => action::add_item(keywords),
-        Bibrs::Delete{id} => action::delete(&id),
+        Bibrs::Delete{id} => action::delete(&conn, &id),
         Bibrs::Output{source, bibtex, simple} => {
-            if bibtex { action::output_bib(&source); }
-            if simple || !bibtex { action::output_str(&source); }
+            if bibtex { println!("{}", action::output_bib(&conn, &source)); }
+            if simple || !bibtex { println!("{}", action::output_str(&conn, &source)); }
         },
         Bibrs::Keywords{source, add, del} =>
             action::keywords(&source, add.join(" ").split(",").map(|x| x.trim().to_string())

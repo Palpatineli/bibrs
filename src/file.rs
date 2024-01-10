@@ -76,7 +76,7 @@ impl<'a> File<'a> {
             "pdf" => &CONFIG.pdf,
             "comment" => &CONFIG.comment,
             "bib" | "temp_bib" | "temp_pdf" => { panic!("use File::temp to create temp files.") },
-            _ => panic!(format!("Wrong file type {}", file_type))
+            _ => panic!("Wrong file type {}", file_type)
         };
         File{path: handler.search(name), handler}
     }
@@ -86,11 +86,12 @@ impl<'a> File<'a> {
             "bib" | "temp_bib" => &CONFIG.temp_bib,
             "temp_pdf" => &CONFIG.temp_pdf,
             "pdf" | "comment" => { return Err(Error::new(ErrorKind::InvalidInput, "use File::New to create none temp files that have specified file names.")) },
-            _ => panic!(format!("Wrong file type {}", file_type))
+            _ => panic!("Wrong file type {}", file_type)
         };
         Ok(File{path: handler.search_temp()?, handler})
     }
 
+    #[allow(dead_code)]
     pub fn mv(&self, other_handler: &FileHandler) -> Result<()> {
         let target_path = other_handler.folder.join(self.path.file_name().ok_or_else(
                 || Error::new(ErrorKind::InvalidInput, "file path has no file name."))?);

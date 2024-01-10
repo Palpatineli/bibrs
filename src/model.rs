@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
+use std::iter::Extend;
 use lazy_static::lazy_static;
 use crate::entry_type::EntryType;
 
@@ -27,8 +28,33 @@ pub struct Entry {
     pub authors: Vec<Person>,
     pub editors: Vec<Person>,
     pub keywords: HashSet<String>,
-    pub extra_fields: Vec<(String, String)>,
+    pub extra_fields: HashMap<String, String>,
     pub files: Vec<(String, String)>,
+}
+
+fn update_option<T>(this: &mut Option<T>, that: &Option<T>) where T: Clone {
+    if this.is_none() && that.is_some() { this.replace(that.as_ref().unwrap().clone()); }
+}
+
+impl Entry {
+    /// Unlike what the operation suggests, it updates the other way: add stuff to self only if self 
+    /// does not have it.
+    pub fn update(&mut self, other: &Entry) {
+        update_option(&mut self.booktitle, &other.booktitle);
+        update_option(&mut self.month, &other.month);
+        update_option(&mut self.chapter, &other.chapter);
+        update_option(&mut self.edition, &other.edition);
+        update_option(&mut self.volume, &other.volume);
+        update_option(&mut self.number, &other.number);
+        update_option(&mut self.pages, &other.pages);
+        update_option(&mut self.journal, &other.journal);
+        if self.authors.len() == 0 {self.authors.extend(other.authors.iter().map(|x| x.clone()))}
+        if self.editors.len() == 0 {self.editors.extend(other.editors.iter().map(|x| x.clone()))}
+        let to_add: Vec<(String, String)> = other.extra_fields.iter().filter_map(
+            |(k, v)| if self.extra_fields.contains_key(k) { None } else { Some((k.clone(), v.clone()))})
+            .collect();
+        self.extra_fields.extend(to_add);
+    }
 }
 
 macro_rules! str_hashset {
