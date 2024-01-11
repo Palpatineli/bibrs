@@ -2,21 +2,21 @@ database = "Sync/script/rust/bibrs/data/library.sqlite"
 journal_db = "Sync/script/rust/bibrs/data/journal.sqlite"
 
 [pdf]
-folder = "Sync/Paper_test/pdf/"
-extension = [".pdf"]
+folder = "Sync/paper/pdf/"
+extension = ["pdf"]
 opener = "evince"
 
 [comment]
-folder = "Sync/Paper_test/comment/"
-extension = [".txt"]
-opener = "gvim"
+folder = "Sync/paper/comment/"
+extension = ["txt"]
+opener = "nvim-qt"
 
 [temp_pdf]
 folder = "Downloads/"
-extension = [".pdf"]
+extension = ["pdf"]
 opener = "evince"
 
 [temp_bib]
 folder = "Downloads/"
-extension = [".bib", ".txt"]
+extension = ["bib", "txt"]
 opener = "gvim"

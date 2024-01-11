@@ -9,7 +9,7 @@ use crate::formatter::{BibPrint, LabeledPrint};
 use crate::model::Entry;
 use crate::database::{SqliteBibDB, BibDataBase};
 use crate::reader::{pandoc::read_pandoc, bibtex::read_entries};
-use crate::config::{self, CONFIG, TEST_CONFIG};
+use crate::config::{self, CONFIG};
 use crate::file::{File, BibFile};
 
 mod keywords;
@@ -100,8 +100,7 @@ mod tests {
 
     #[test]
     fn test_search() {
-        let config = Config::new(Some(TEST_CONFIG.to_path_buf()));
-        let conn = SqliteBibDB::new(Some(config.database));
+        let conn = SqliteBibDB::new(Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/data/library.sqlite")));
         let res = search(&conn, vec!["Sur".to_string()], vec![]);
         println!("Result = {}", res);
     }

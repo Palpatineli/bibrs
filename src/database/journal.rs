@@ -1,5 +1,6 @@
-use std::path::Path;
-use rusqlite::{Result, OpenFlags, Connection, Row};
+use std::path::PathBuf;
+use rusqlite::{Result, Connection, Row, ToSql};
+use crate::config::CONFIG;
 
 pub struct Journal {
     pub id: Option<i32>,
@@ -9,13 +10,6 @@ pub struct Journal {
 }
 
 impl Journal {
-    const SEARCH_QUERY: &'static str = "SELECT rowid, name, abbr, abbr_no_dot FROM journal WHERE journal MATCH ? ORDER BY LENGTH(name) LIMIT 1;";
-
-    pub fn search(name: &str) -> Result<Self> {
-        let conn = Connection::open_with_flags(Path::new("data/journal.sqlite"), OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-        conn.query_row_and_then(Journal::SEARCH_QUERY, &[&name], Journal::from_row)
-    }
-
     pub fn from_row(row: &Row) -> Result<Self> {
         Ok(Journal {
             id: Some(row.get_unwrap(0)),
@@ -26,12 +20,33 @@ impl Journal {
     }
 }
 
+pub struct JournalDB {
+    conn: Connection,
+}
+
+impl JournalDB {
+    const SEARCH_QUERY: &'static str = "SELECT rowid, name, abbr, abbr_no_dot FROM journal WHERE journal MATCH ? ORDER BY LENGTH(name) LIMIT 1;";
+
+    pub fn new(path: Option<PathBuf>) -> Self {
+        let db_path = path.unwrap_or_else(|| CONFIG.database.clone());
+        let conn = Connection::open(&db_path).expect(
+            &format!("Cannot open sqlite file at {}!", db_path.to_string_lossy()));
+        conn.pragma_update(None, "foreign_keys", &"ON").unwrap();
+        JournalDB{conn}
+    }
+
+    pub fn search<T: AsRef<str> + ToSql + ?Sized>(&self, name: &T) -> Result<Journal> {
+        self.conn.query_row_and_then(JournalDB::SEARCH_QUERY, &[&name], Journal::from_row)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn test_search() {
-        let result = Journal::search("nature neuroscience").unwrap();
+        let db = JournalDB::new(Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/data/journal.sqlite")));
+        let result = db.search("nature neuroscience").unwrap();
         assert_eq!(result.name, "Nature Neuroscience");
         assert_eq!(result.id.unwrap(), 7172);
     }

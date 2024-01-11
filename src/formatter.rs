@@ -143,7 +143,7 @@ impl Entry {
         } else if self.editors.len() > 0 {
             output.push(self.editors.labeled_to_str(searched));
         };
-        output.push(format!(". ({}){}. ", self.year, self.title.to_title()));
+        output.push(format!(". ({}) {}. ", self.year, self.title.to_title()));
         if let Some(ref journal) = self.journal { output.push(journal.clone()); }
         else if let Some(ref booktitle) = self.booktitle { output.push(booktitle.clone()); };
         output.concat().trim_str()
@@ -198,7 +198,7 @@ pub mod tests {
         let mut test_bib = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_bib.push("test/data/test.bib");
         let item = bibtex::read_entries(&test_bib);
-        let correct_labeled: &str = "\u{1b}[38;5;1mMichel\u{1b}[38;5;4m Goossens\u{1b}[39m, Frank Mittelbach & \u{1b}[38;5;1mAlexander\u{1b}[38;5;4m Samarin\u{1b}[39m. (1993).The \\latex\\ Companion.";
+        let correct_labeled: &str = "\u{1b}[38;5;1mMichel\u{1b}[38;5;4m Goossens\u{1b}[39m, Frank Mittelbach & \u{1b}[38;5;1mAlexander\u{1b}[38;5;4m Samarin\u{1b}[39m. (1993) The \\latex\\ Companion.";
         assert_eq!(item[1].labeled_to_str(&["samarin".to_owned(), "goossens".to_owned()]), correct_labeled);
     }
 }

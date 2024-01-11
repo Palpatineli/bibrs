@@ -1,3 +1,5 @@
+pub mod add_item;
+
 use std::io;
 use std::marker::PhantomData;
 use std::convert::{TryFrom, AsRef};

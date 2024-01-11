@@ -1,5 +1,4 @@
 pub mod journal;
-pub mod add_item;
 
 use std::str;
 use std::path::PathBuf;
@@ -60,8 +59,8 @@ pub trait BibDataBase {
     fn del_keywords<T: AsRef<str>>(&self, citation: &str, terms: &[T]) -> Result<()>;
     fn get_files(&self, citation: &str) -> Result<Vec<(String, String)>>;
     fn add_file(&self, citation: &str, name: &str, file_type: &str) -> Result<()>;
-    fn query_journal<T: AsRef<str>>(&self, name: T) -> Result<i32>;
-    fn add_journal(&self, journal: Journal) -> Result<i32>;
+    fn search_journal(&self, name: &str) -> Result<i32>;
+    fn add_journal(&self, jouranl: Journal) -> Result<i32>;
 }
 
 /// insert a number of question marks
@@ -87,7 +86,7 @@ macro_rules! build_param {
 
 impl SqliteBibDB {
     pub fn new(inputs: Option<PathBuf>) -> Self {
-        let db_path = inputs.unwrap_or(CONFIG.database.clone());
+        let db_path = inputs.unwrap_or_else(|| CONFIG.database.clone());
         let conn = Connection::open(&db_path).expect(
             &format!("Cannot open sqlite file at {}!", db_path.to_string_lossy()));
         conn.pragma_update(None, "foreign_keys", &"ON").unwrap();
@@ -323,25 +322,23 @@ impl BibDataBase for SqliteBibDB {
         Ok(())
     }
 
-    fn add_journal(&self, journal: Journal) -> Result<i32> {
-        let mut insert = self.conn.prepare_cached("INSERT INTO journals (name, abbr, abbr_no_dot) VALUES (?, ?, ?);")?;
-        insert.insert(&[journal.name, journal.abbr, journal.abbr_no_dot]).map(|x| x as i32)
-    }
-
     /// query for journal_id in the main database by a name as either full name or abbreviation.
     /// If the journal does not exist in the main data base, insert the journal library entry into
     /// the main database if it exists. If the journal does not exist in the journal library, raise
     /// an error.
-    fn query_journal<T: AsRef<str>>(&self, name: T) -> Result<i32>{
+    fn search_journal(&self, name: &str) -> Result<i32>{
         let mut query = self.conn.prepare_cached("
-            SELECT * FROM journals AS journals_full WHERE journals_full.name = ?
+            SELECT rowid, name, abbr, abbr_no_dot
+            FROM journals AS journals_full WHERE journals_full.name = ?
             UNION SELECT * FROM journals AS journals_abbr WHERE journals_abbr.abbr = ?
-            UNION SELECT * FROM journals AS journals_abbr_nd WHERE journals_abbr_nd.abbr_no_dot LIKE ?;")?;
-        let journal = query.query_row(params![name.as_ref(), name.as_ref(), &format!("%{}%", name.as_ref())], Journal::from_row);
-        match journal {
-            Ok(journal) => Ok(journal.id.unwrap()),
-            Err(_) => { self.add_journal(Journal::search(name.as_ref())?) }
-        }
+            UNION SELECT * FROM journals AS journals_abbr_nd WHERE journals_abbr_nd.abbr_no_dot = ?
+            ORDER BY LENGTH(name) LIMIT 1;")?;
+        query.query_row(params![name, name, &format!("%{}%", name)], Journal::from_row).map(|x| x.id.unwrap())
+    }
+
+    fn add_journal(&self, journal: Journal) -> Result<i32> {
+        let mut insert = self.conn.prepare_cached("INSERT INTO journals (name, abbr, abbr_no_dot) VALUES (?, ?, ?);")?;
+        insert.insert(&[journal.name, journal.abbr, journal.abbr_no_dot]).map(|x| x as i32)
     }
 }
 
@@ -350,7 +347,6 @@ mod tests {
     use super::*;
     use std::iter::FromIterator;
     use itertools::Itertools;
-    use crate::config::Config;
 
     macro_rules! vec_str {
         ($($word:expr),+) => {{
@@ -365,7 +361,7 @@ mod tests {
         // multi_param
         assert_eq!(multi_param!(3), "?, ?, ?");
         // test get people
-        let conn = SqliteBibDB::new(Some(Config::new(Some("test/data/bibrs-test.toml".into())).database));
+        let conn = SqliteBibDB::new(Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/data/library.sqlite")));
         let (authors, editors) = conn.get_people("stein2004");
         assert_eq!(editors[0].id.unwrap(), 1878);
         assert_eq!(authors[3].last_name, "vaughan");
@@ -394,7 +390,7 @@ mod tests {
     #[test]
     fn test_keywords() {
         // test add_keywords
-        let conn = SqliteBibDB::new(Some(Config::new(Some("test/data/bibrs-test.toml".into())).database));
+       let conn = SqliteBibDB::new(Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/data/library.sqlite")));
         conn.add_keywords("walker1938", &vec_str!["pulvinar", "thalamus", "macaque", "atlas", "bullshit"]).expect("can't add keywrods");
         conn.del_keywords("walker1938", &vec_str!["bullshit", "atlas", "review"])
             .expect("can't delete keywords");

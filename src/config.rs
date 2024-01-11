@@ -26,13 +26,12 @@ pub struct Config {
 
 lazy_static!{
     pub static ref DEFAULT_CONFIG: PathBuf = config_dir().unwrap().join("bibrs/bibrs.toml");
-    pub static ref TEST_CONFIG: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/bibrs.toml");
 }
 
 impl Config {
     pub fn new(config_path: Option<PathBuf>) -> Config {
         let mut config_file;
-        let config_path = config_path.unwrap_or(DEFAULT_CONFIG.to_path_buf());
+        let config_path = config_path.unwrap_or_else(|| DEFAULT_CONFIG.to_path_buf());
         config_file = File::open(&config_path).expect(
             &format!("Specified config file not found at {}!", config_path.to_string_lossy()));
         let mut config_str = String::new();
@@ -109,8 +108,8 @@ mod tests {
     #[test]
     fn test_config() {
         let temp_config = Config::new(Some("test/data/bibrs-test.toml".into()));
-        assert_eq!(temp_config.comment.extension[0], ".txt");
-        assert_eq!(temp_config.pdf.folder, PathBuf::from("/home/palpatine/Sync/Paper_test/pdf/"));
+        assert_eq!(temp_config.comment.extension[0], "txt");
+        assert_eq!(temp_config.pdf.folder, PathBuf::from("/home/palpatine/Sync/paper/pdf/"));
     }
 }
 
