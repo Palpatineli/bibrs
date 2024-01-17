@@ -1,6 +1,7 @@
 #![feature(trait_alias)]
 #[doc=include_str!("../README.md")]
 use std::collections::HashSet;
+use std::iter::FromIterator;
 use structopt::StructOpt;
 
 mod action;
@@ -65,28 +66,25 @@ enum Bibrs {
     Init,
 }
 
+fn comma_separate_args<T: FromIterator<String>>(input: Vec<String>) -> T {
+    input.join(" ").split(",").map(|x| x.trim().to_string().to_lowercase()).filter(|x| x.len() > 0).collect()
+}
+
 fn main() {
     let opt = Bibrs::from_args();
     let conn = database::SqliteBibDB::new(None);
     match opt {
         Bibrs::Search{authors, keywords} =>
-            println!("{}", action::search(&conn,
-                    authors.join(" ").split(",").map(|x| x.trim().to_string()).collect(),
-                           if keywords.len() > 0 {
-                               keywords.join(" ").split(",").map(|x| x.trim().to_string()).collect()
-                           } else {keywords})),
+            println!("{}", action::search(&conn, comma_separate_args(authors), comma_separate_args(keywords))),
         Bibrs::Open{id, comment, pdf} => action::open(&conn, &id, comment, pdf),
-        Bibrs::Add{keywords} => action::add_item(keywords),
+        Bibrs::Add{keywords} => action::add_item(comma_separate_args(keywords)),
         Bibrs::Delete{id} => action::delete(&conn, &id),
         Bibrs::Output{source, bibtex, simple} => {
             if bibtex { println!("{}", action::output_bib(&conn, &source)); }
             if simple || !bibtex { println!("{}", action::output_str(&conn, &source)); }
         },
         Bibrs::Keywords{source, add, del} =>
-            action::keywords(&source, add.join(" ").split(",").map(|x| x.trim().to_string())
-                                .filter(|x| x.len() > 0).collect::<HashSet<String>>(),
-                             del.join(" ").split(",").map(|x| x.trim().to_string())
-                                .filter(|x| x.len() > 0).collect::<HashSet<String>>()),
+            action::keywords(&source, comma_separate_args(add), comma_separate_args(del)),
         Bibrs::Init => config::initialize()
     }
 }
@@ -115,5 +113,17 @@ mod tests {
             },
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn test_util() {
+        let res: HashSet<String> = comma_separate_args(["this", "good,that", "bad,this", "good"].iter().map(|x| (*x).to_owned()).collect());
+        assert_eq!(res, ["this good", "that bad"].iter().map(|x| (*x).to_owned()).collect::<HashSet<String>>());
+        let res2: Vec<String> = comma_separate_args(["this", "good,that", "bad,this", "good"].iter().map(|x| (*x).to_owned()).collect());
+        assert_eq!(res2, ["this good", "that bad", "this good"].iter().map(|x| (*x).to_owned()).collect::<Vec<String>>());
+        let res3: Vec<String> = comma_separate_args(vec![]);
+        assert_eq!(res3.len(), 0);
+        let res4: HashSet<String> = comma_separate_args(vec![]);
+        assert_eq!(res4.len(), 0);
     }
 }

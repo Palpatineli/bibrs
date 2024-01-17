@@ -1,3 +1,5 @@
+mod bibtex;
+
 use std::collections::HashSet;
 use termion::color;
 use itertools::Itertools;

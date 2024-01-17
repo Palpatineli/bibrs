@@ -101,7 +101,9 @@ mod tests {
     #[test]
     fn test_search() {
         let conn = SqliteBibDB::new(Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/data/library.sqlite")));
-        let res = search(&conn, vec!["Sur".to_string()], vec![]);
-        println!("Result = {}", res);
+        let res = search(&conn, vec!["sur".to_string()], vec!["review".to_string()]);
+        assert_eq!(res.split("\n").next(), Some("\u{1b}[38;5;1mMriganka\u{1b}[38;5;4m Sur\u{1b}[39m & John L.R. Rubenstein. (2005) Patterning And Plasticity Of The Cerebral Cortex. Science"));
+        let res = search(&conn, vec!["sur".to_string()], Vec::<String>::new());
+        assert_eq!(res.matches("\n").count(), 12);
     }
 }

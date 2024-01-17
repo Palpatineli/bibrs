@@ -4,8 +4,8 @@ use termion::color;
 use crate::reader::bibtex::read_entries;
 use crate::file::{File, BibFile};
 use crate::database::{BibDataBase, journal::Journal};
-use crate::database::add_item::{InsertionStart, InsertionWithName, InsertionWithJournal, InsertionWithPeople};
-use crate::database::add_item::{JournalError, CitationError, PersonError};
+use crate::ui::add_item::{InsertionStart, InsertionWithName, InsertionWithJournal, InsertionWithPeople};
+use crate::ui::add_item::{JournalError, CitationError, PersonError};
 use crate::config::CONFIG;
 use crate::ui::{self, UI, UIResponse, MsgType, JournalInputs};
 

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use itertools::Itertools;
 use termion::{color, style};
-use crate::database::{SqliteBibDB, BibDataBase};
+use crate::{database::{SqliteBibDB, BibDataBase}, model::Entry};
 
 macro_rules! fg {
     ($col:ident, $content:expr) => {
@@ -10,7 +10,7 @@ macro_rules! fg {
 }
 
 /// add or delete keywords
-/// print the resulting entry, with new keywords in red and deleted keywords in invert color
+/// returns a tuple (PaperItem, Added Keywords, Deleted Keywords, Kept Keywords)
 pub fn keywords(citation: &str, mut add: HashSet<String>, mut del: HashSet<String>) {
     let conn = SqliteBibDB::new(None);
     let old_entry = conn.get_item(citation).expect(&format!("Cannot find entry {}", &citation));
@@ -29,6 +29,7 @@ pub fn keywords(citation: &str, mut add: HashSet<String>, mut del: HashSet<Strin
     let new_entry = conn.get_item(citation).unwrap();
     let mut all_keywords: Vec<String> = new_entry.keywords.union(&old_entry.keywords).map(|x| x.to_string()).collect();
     all_keywords.sort();
+    // TODO: change the return value and add the formating for this
     let keyword_str = all_keywords.iter().map(
         |x| if new_entry.keywords.contains(x) {
             if old_entry.keywords.contains(x) { x.to_string() }

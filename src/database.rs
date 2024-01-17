@@ -274,7 +274,7 @@ impl BibDataBase for SqliteBibDB {
                                ON person_id = persons.id
                        WHERE search_term IN ({})
                        GROUP BY item_id
-                      HAVING count(DISTINCT search_term) = ?", multi_param!(author_no)),
+                     HAVING count(DISTINCT search_term) = ?", multi_param!(author_no)),
                  build_param!((authors, &author_no)))
             }
         } else if keyword_no > 0 {
@@ -289,8 +289,9 @@ impl BibDataBase for SqliteBibDB {
              build_param!((keywords, &keyword_no)))
         } else { panic!("please search with authors and/or keywords!") };
         let mut query = self.conn.prepare_cached(&query_str)?;
-        let results = query.query_map(&terms, |row| row.get::<_, String>(0))?
+        let mut results = query.query_map(&terms, |row| row.get::<_, String>(0))?
             .map(|term| self.get_item(&(term?))).collect::<Result<Vec<Entry>>>()?;
+        results.sort_by(|a, b| a.year.cmp(&b.year));
         Ok(results)
     }
 

@@ -1,9 +1,8 @@
 use std::result::Result;
 use std::fmt;
 use std::convert::From;
-use std::path::PathBuf;
 use rusqlite::Error;
-use crate::database::{SqliteBibDB, BibDataBase};
+use super::{SqliteBibDB, BibDataBase, ConfigOrPath};
 use crate::model::{Person, Entry};
 use crate::formatter::BibPrint;
 
@@ -70,7 +69,7 @@ impl From<Error> for JournalError { fn from(error: Error) -> Self { JournalError
 
 pub type Persons = Vec<(Person, Vec<Person>)>;
 
-pub struct InsertionStart { pub entry: Entry, conn: SqliteBibDB}
+pub struct InsertionStart { pub entry: Entry, conn: SqliteBibDB, }
 
 pub struct InsertionWithName { pub entry: Entry, pub conn: SqliteBibDB, update: bool}
 
@@ -79,16 +78,11 @@ pub struct InsertionWithJournal { pub entry: Entry, conn: SqliteBibDB, journal_i
 pub struct InsertionWithPeople { pub entry: Entry, conn: SqliteBibDB, journal_id: Option<i32>, update: bool }
 
 impl InsertionStart {
-    pub fn new(entry: Entry, db_path: Option<PathBuf>) -> Self {
-        Self{entry, conn: SqliteBibDB::new(db_path)}
-    }
-
+    pub fn new(entry: Entry, inputs: Option<ConfigOrPath>) -> Self { Self{entry, conn: SqliteBibDB::new(inputs)} }
     pub fn check_citation(self) -> Result<InsertionWithName, CitationError> {
         match self.conn.get_item(&self.entry.citation) {
             Ok(entry) => Err(CitationError::Citation(self, entry)),
-            Err(Error::QueryReturnedNoRows) => Ok(
-                InsertionWithName{entry: self.entry, conn: self.conn, update: false}
-                ),
+            Err(Error::QueryReturnedNoRows) => Ok(InsertionWithName{entry: self.entry, conn: self.conn, update: false}),
             Err(x) => Err(CitationError::DBError(x))
         }
     }
@@ -101,7 +95,7 @@ impl InsertionWithName {
     pub fn check_journal(self) -> Result<InsertionWithJournal, JournalError> {
         let journal_id: Option<i32> = match self.entry.journal {
             Some(ref journal) => {
-                match self.conn.search_journal(journal) {
+                match self.conn.query_journal(journal) {
                     Ok(x) => Some(x),
                     Err(_) => {
                         let journal_str = journal.to_owned();
