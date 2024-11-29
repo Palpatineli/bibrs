@@ -1,8 +1,19 @@
 use std::borrow::Cow;
 
 pub trait ToTitleCase {
-    fn to_title<'a>(&'a self) -> Cow<'a, str>;
+    fn to_title(&self) -> Cow<str>;
 }
+
+
+#[macro_export]
+macro_rules! str_hashset {
+    ($($item:expr),*) => {{
+        let mut temp_set = HashSet::new();
+        $(temp_set.insert($item.to_owned());)*
+        temp_set
+    }};
+}
+
 
 /// Allow raw string to be converted to title case if it's the first letter after braces, spaces
 /// and periods.

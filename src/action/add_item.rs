@@ -1,97 +1,94 @@
-use std::io;
-use machine::{machine, transitions};
-use termion::color;
+use std::error::Error;
+
+use inquire::{Confirm, Text, Select};
+use rusqlite::Error::QueryReturnedNoRows;
 use crate::reader::bibtex::read_entries;
 use crate::file::{File, BibFile};
-use crate::database::{BibDataBase, journal::Journal};
-use crate::ui::add_item::{InsertionStart, InsertionWithName, InsertionWithJournal, InsertionWithPeople};
-use crate::ui::add_item::{JournalError, CitationError, PersonError};
+use crate::database::{BibDataBase, journal::{Journal, JournalDB}};
+use crate::formatter::ToString;
 use crate::config::CONFIG;
-use crate::ui::{self, UI, UIResponse, MsgType, JournalInputs};
 
-// machine!(
-//     #[derive(Clone, Debug, PartialEq)]
-//     enum EntryState {
-//         StageStart,
-//         StageCitation,
-//         StageJournal,
-//         StagePeople,
-//         StageEnd,
-//         StageFile,
-//         StageInsert,
-//     }
-// );
-//
-// #[derive(Clone, Debug, PartialEq)]
-// pub struct Command { cmd: String, }
-//
-// transitions!(EntryState,
-//     [
-//         (StageStart, Command) => [StageCitation, StageEnd],
-//         (StageCitation, Command) => [StageJournal, StageEnd],
-//         (StageJournal, Command) => [StagePeople, StageEnd],
-//         (StagePeople, Command) => [StageFile, StageEnd],
-//         (StageFile, Command) => [StageFile, StageEnd, StageInsert]
-//     ]
-// );
-
-pub fn add_item(keywords: Vec<String>) {
-    let bib_file = File::temp("temp_bib").expect(&format!("Cannot find bibtex file in {:?}", CONFIG.temp_bib.folder));
+pub fn add_item(conn: BibDataBase, journal_conn: JournalDB, keywords: Vec<String>) -> Result<(), Error> {
+    let bib_file = File::temp("temp_bib").unwrap_or_else(
+        |_| panic!("Cannot find bibtex file in {:?}", CONFIG.temp_bib.folder));
     let pdf_file: Option<File> = File::temp("temp_pdf").ok();
     let pdf = File::temp("temp_pdf").ok();
-    let mut entries = read_entries(&bib_file.path());
+    let mut entries = read_entries(bib_file.path());
     let mut entry = entries.pop().expect("empty bibtext file in download folder, or error in the bibtex file");
-    entry.citation = entry.to_citation();
-    entry.keywords.extend(keywords.into_iter());
-    let mut insert = InsertionStart::new(entry, None);
-    let ui: UI<ui::SimpleInputs> = UI::new(MsgType::Info);
-    match ui.prompt(format!("New Item: {}", insert.entry.to_str())) {
-        Ok(ui::SimpleInputs::Continue) => {},
-        Ok(ui::SimpleInputs::Abort) | Err(_) => { println!("Aborted."); return }
-    };
-    let mut insert = 'citation_check: loop {
-        match insert.check_citation() {
-            Ok(insert) => break 'citation_check insert,
-            Err(CitationError::Citation(insert_old, entry)) => {
-                insert = insert_old;
-                let citation_check_ui: UI<ui::CitationInputs> = UI::new(MsgType::Conflict);
-                match citation_check_ui.prompt(format!("naming conflict: {}\nvs. existing entry: {}", insert.entry.citation, entry.to_str())) {
-                    Ok(ui::CitationInputs::Changed(x)) => { insert.entry.citation = x; }
-                    Ok(ui::CitationInputs::Update) => { insert.entry.update(&entry); break 'citation_check insert.update() },
-                    Ok(ui::CitationInputs::Abort) | Err(_) => { println!("Aborted."); return },
-                }
-            },
-            Err(_) => panic!("Database Error on item insertion!")
-        }
-    };
-    let mut insert = 'journal_check: loop {
-        match insert.check_journal() {
-            Ok(insert) => break 'journal_check insert,
-            Err(JournalError::Journal(insert_old, journal_name)) => {
-                insert = insert_old;
-                let journal_check_ui: UI<ui::JournalInputs> = UI::new(MsgType::Missing);
-                match journal_check_ui.prompt(format!("unknown journal! {}", insert.entry.journal.clone().unwrap())) {
-                    Ok(ui::JournalInputs::Update((x, y, z))) => {
-                        let journal_id = insert.conn.add_journal(Journal{id: None, name: x.clone(), abbr: y, abbr_no_dot: z});
-                        if let Ok(id) = journal_id {
-                            insert.entry.journal = Some(x);
-                            break 'journal_check insert.check_journal().expect("inserted journal not found!");
-                        }
+    entry.citation = entry.generate_citation();
+    entry.keywords.extend(keywords);
+    println!("New Item: \n{}", entry.to_str());
+
+    // Ask citation
+    'citation_check: loop {
+        match conn.get_item(&entry.citation) {
+            Ok(existing_entry) => {
+                println!("Conflicting citation: \n{}", existing_entry.to_str());
+                match Text("Input suffix, input nothing to update the existing entry").prompt()? {
+                    "" => {
+                        entry.update(&existing_entry);
+                        break 'citation_check;
+                    },
+                    new_citation => {
+                        entry.citation = entry.citation.push_str(new_citation);
                     }
-                    Ok(ui::JournalInputs::Abort) | Err(_) => {println!("Aborted."); return },
                 }
             },
-            Err(_) => panic!("Database Error in journal query!")
+            Err(_) => break 'citation_check
         }
-    };
-    let mut insert = 'person_check: loop {
-        match insert.check_people() {
+    }
+
+    // Ask Journal
+    if let Some(journal_name) = entry.journal {
+        entry.journal = 'journal_check: loop {
+            match conn.search_journal(&journal_name) {
+                Ok(insert) => break 'journal_check Some(insert),
+                Err(QueryReturnedNoRows) => {
+                    match journal_conn.search(&journal_name) {
+                        Ok(new_journal) => {
+                            conn.add_journal(new_journal);
+                            break 'journal_check Some(new_journal.name)
+                        },
+                        Err(QueryReturnedNoRows) => {
+                            match Text("Journal not found, please add a new entry:\n\tSeparated by commas: \
+                                full name, abbreviation, abbreviation without dots").prompt()? {
+                                Ok(result) => {
+                                    let new_journal = Journal::from_list(result.split(",")
+                                        .map(|x| x.trim()).collect::<Vec<String>>());
+                                    entry.journal = new_journal.name.clone();
+                                    conn.add_journal(new_journal);
+                                }
+                            }
+                        },
+                        Err(err) => return Err(err)
+                    }
+                },
+                Err(err) => return Err(err)
+            }
+        }
+    }
+
+    // Ask Author
+    for person in entry.authors.iter() {
+        match conn.search_lastname(&person.last_name) {
+            Ok(authors) => {
+                Select(authors.map(|x| x.first_names)).prompt()
+            },
+            Err(_) => {}
+        }
+    }
+    'person_check: loop {
+        match conn.search_lastname(&entry.authors).check_people() {
             Ok(insert) => break 'person_check insert,
-            Err(PersonError::Person(old_insert, persons)) => {
+            Err(PersonError::Person(old_insert, _)) => {
                 insert = old_insert;
             },
             Err(_) => panic!("Database Error in author query!")
         }
     };
-    insert.insert().unwrap();
+    match Confim::new("(c)ontinue or (a)bort?").prompt() {
+        Ok(true) => { insert.insert().unwrap() },
+        Ok(false) | Err(_) => { println!("Aborted.") }
+    };
+    return Ok(())
 }

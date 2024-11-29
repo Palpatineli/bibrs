@@ -26,7 +26,7 @@ impl Person {
             let search_term = strip_accent(&last_name);
             Person { id: None, last_name, first_name, search_term }
         } else {
-            let mut substr_iter = input.rsplitn(2, " ");  // ! return word order is reversed too
+            let mut substr_iter = input.rsplitn(2, ' ');  // ! return word order is reversed too
             let mut last_name = substr_iter.next().unwrap().to_owned().to_lowercase();
             let mut first_name = substr_iter.next().unwrap().to_owned().to_lowercase();
             let search_term = strip_accent(&last_name);
@@ -60,7 +60,8 @@ fn load_pages(input: &str) -> String {
                 let start = caps.get(2).unwrap().as_str().to_owned();
                 let mut end = caps.get(3).unwrap().as_str().to_owned();
                 if start.len() > end.len() { end = start[0..start.len() - end.len()].to_owned() + &end; }
-                format!{"{}{}-{}", caps.get(1).unwrap().as_str(), start.parse::<u32>().unwrap(), end.parse::<u32>().unwrap()}
+                format!{"{}{}-{}", caps.get(1).unwrap().as_str(), start.parse::<u32>().unwrap(),
+                    end.parse::<u32>().unwrap()}
             },
             None => input.to_owned()
         }
@@ -75,11 +76,12 @@ fn read_file(filename: &Path) -> String {
     content
 }
 
+/// Read one or more bibtex entries from a single .bib file
 pub fn read_entries(filename: &Path) -> Vec<Entry> {
     let mut results: Vec<Entry> = Vec::new();
     let file_content = read_file(filename);
     let bibtex = Bibtex::parse(&file_content).unwrap();
-    for bib_entry in bibtex.bibliographies().into_iter() {
+    for bib_entry in bibtex.bibliographies().iter() {
         results.push(Entry::from_bib(bib_entry))
     }
     results
@@ -90,7 +92,7 @@ impl Entry {
         let citation = strip_accent(bib_entry.citation_key());
         let entry_type = EntryType::parse(bib_entry.entry_type());
         let mut entry = Entry{citation, entry_type, ..Default::default()};
-        for (field_name, content) in bib_entry.tags().into_iter() {
+        for (field_name, content) in bib_entry.tags().iter() {
             match field_name.as_ref() {
                 "title" => entry.title = load_title(content),
                 "booktitle" => entry.booktitle = Some(load_title(content)),

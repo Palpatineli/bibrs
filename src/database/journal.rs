@@ -18,6 +18,13 @@ impl Journal {
             abbr_no_dot: row.get_unwrap(3),
         })
     }
+    pub fn from_list(str_list: Vec<String>) -> Result<Self> {
+        if str_list.len() < 3 {
+            Err("Journal needs full name, abbreviation and abbreviation without dot")
+        } else {
+            Ok(Journal{id: None, name: str_list[0], abbr: str_list[1], abbr_no_dot: str_list[2]})
+        }
+    }
 }
 
 pub struct JournalDB {
@@ -25,12 +32,13 @@ pub struct JournalDB {
 }
 
 impl JournalDB {
-    const SEARCH_QUERY: &'static str = "SELECT rowid, name, abbr, abbr_no_dot FROM journal WHERE journal MATCH ? ORDER BY LENGTH(name) LIMIT 1;";
+    const SEARCH_QUERY: &'static str = "SELECT rowid, name, abbr, abbr_no_dot FROM journal \
+        WHERE journal MATCH ? ORDER BY LENGTH(name) LIMIT 1;";
 
     pub fn new(path: Option<PathBuf>) -> Self {
         let db_path = path.unwrap_or_else(|| CONFIG.database.clone());
-        let conn = Connection::open(&db_path).expect(
-            &format!("Cannot open sqlite file at {}!", db_path.to_string_lossy()));
+        let conn = Connection::open(&db_path).unwrap_or_else(
+            |_| panic!("Cannot open sqlite file at {}!", db_path.to_string_lossy()));
         conn.pragma_update(None, "foreign_keys", &"ON").unwrap();
         JournalDB{conn}
     }

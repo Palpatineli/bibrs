@@ -1,7 +1,7 @@
 use std::collections::{HashSet, HashMap};
-use std::iter::Extend;
 use lazy_static::lazy_static;
 use crate::entry_type::EntryType;
+use crate::str_hashset;
 
 #[derive(Default, Debug, Clone)]
 pub struct Person {
@@ -48,21 +48,13 @@ impl Entry {
         update_option(&mut self.number, &other.number);
         update_option(&mut self.pages, &other.pages);
         update_option(&mut self.journal, &other.journal);
-        if self.authors.len() == 0 {self.authors.extend(other.authors.iter().map(|x| x.clone()))}
-        if self.editors.len() == 0 {self.editors.extend(other.editors.iter().map(|x| x.clone()))}
+        if self.authors.is_empty() {self.authors.extend(other.authors.iter().cloned())}
+        if self.editors.is_empty() {self.editors.extend(other.editors.iter().cloned())}
         let to_add: Vec<(String, String)> = other.extra_fields.iter().filter_map(
             |(k, v)| if self.extra_fields.contains_key(k) { None } else { Some((k.clone(), v.clone()))})
             .collect();
         self.extra_fields.extend(to_add);
     }
-}
-
-macro_rules! str_hashset {
-    ($($item:expr),*) => {{
-        let mut temp_set = HashSet::new();
-        $(temp_set.insert($item.to_owned());)*
-        temp_set
-    }};
 }
 
 lazy_static! {

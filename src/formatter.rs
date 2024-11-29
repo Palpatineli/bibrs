@@ -1,34 +1,18 @@
-mod bibtex;
+pub mod bibtex;
 
-use std::collections::HashSet;
 use termion::color;
-use itertools::Itertools;
 use crate::model::{Entry, Person};
 use crate::util::ToTitleCase;
 
-pub trait BibPrint {
-    fn to_bib(&self) -> String;
-    fn to_str(&self) -> String;
-}
+pub trait ToString { fn to_str(&self) -> String; }
 
-impl BibPrint for i32 {
-    fn to_bib(&self) -> String {self.to_string()}
-    fn to_str(&self) -> String {self.to_string()}
-}
-
-impl BibPrint for String {
-    fn to_bib(&self) -> String {self.clone()}
-    fn to_str(&self) -> String {self.clone()}
-}
-
-impl BibPrint for Person {
-    fn to_bib(&self) -> String {
-        format!("{}, {}", self.last_name.to_title(), self.first_name.to_title())}
+impl ToString for Person {
     fn to_str(&self) -> String {
-        format!("{} {}", self.first_name.to_title(), self.last_name.to_title())}
+        format!("{} {}", self.first_name.to_title(), self.last_name.to_title())
+    }
 }
 
-impl BibPrint for Vec<Person> {
+impl ToString for Vec<Person> {
     fn to_str(&self) -> String {
         match self.len() {
             0 => "".to_owned(),
@@ -40,17 +24,6 @@ impl BibPrint for Vec<Person> {
             }
         }
     }
-    fn to_bib(&self) -> String { self.iter().map(|x| x.to_bib()).collect::<Vec<String>>().join(" and ") }
-}
-
-impl BibPrint for Vec<String> {
-    fn to_str(&self) -> String { self.join(", ") }
-    fn to_bib(&self) -> String { self.join(", ")}
-}
-
-impl BibPrint for HashSet<String> {
-    fn to_str(&self) -> String { self.iter().join(", ") }
-    fn to_bib(&self) -> String { self.iter().join(", ")}
 }
 
 pub trait LabeledPrint { fn labeled_to_str(&self, searched: &[String]) -> String; }
@@ -73,7 +46,7 @@ impl LabeledPrint for Vec<Person> {
                     |x| {
                         if searched.contains(&x.search_term) {
                             x.labeled_to_str()
-                        } else { return x.to_str() }
+                        } else { x.to_str() }
                     })
                     .collect::<Vec<String>>().join(", ");
                 format!("{} & {}", output,
@@ -85,51 +58,12 @@ impl LabeledPrint for Vec<Person> {
     }
 }
 
-macro_rules! insert_field {
-    ($target:ident, $struct:ident, $($field_name:ident),+) => (
-        $(if let Some(ref temp) =  $struct.$field_name {
-            $target.push((stringify!($field_name), temp.to_bib()))
-        })+
-    )
-}
-
-macro_rules! insert_vec {
-    ($target:ident, $struct:ident, $({$field:ident, $field_name:ident}),+) => (
-        $(if $struct.$field.len() > 0 {
-            $target.push((stringify!($field_name), $struct.$field.to_bib()))
-        })+
-    )
-}
-
-impl Entry {
-    pub fn to_bib(&self) -> String {
+impl ToString for Entry {
+    fn to_str(&self) -> String {
         let mut output: Vec<String> = Vec::new();
-        output.push(format!{"@{}{{{}", self.entry_type, self.citation});
-
-        let mut fields: Vec<(&str, String)> = Vec::new();
-        fields.push(("year", self.year.to_bib()));
-        insert_field!(fields, self, booktitle, chapter, edition, month, volume, number, pages, journal);
-        insert_vec!(fields, self, {editors, editor}, {authors, author}, {keywords, keyword});
-        for (field, value) in self.extra_fields.iter() {fields.push((field, value.clone()))};
-
-        for (field, value) in fields.into_iter() { output.push(format!{",\n\t{} = {{{}}}", field, value})};
-        output.push("\n}".to_owned());
-        output.concat().to_string()
-    }
-
-    pub fn to_citation(&self) -> String {
-        let last_name: &str = match self.authors.get(0).or_else(|| self.editors.get(0)) {
-            Some(x) => &x.search_term,
-            None => self.title.split_whitespace().next().expect("Error: Nothing in title!")
-        };
-        format!("{}{}", last_name, self.year)
-    }
-
-    pub fn to_str(&self) -> String {
-        let mut output: Vec<String> = Vec::new();
-        if self.authors.len() > 0 {
+        if !self.authors.is_empty() {
             output.push(self.authors.to_str());
-        } else if self.editors.len() > 0 {
+        } else if !self.editors.is_empty() {
             output.push(self.editors.to_str());
         };
         output.push(format!(". ({}).{}. ", self.year, self.title.to_title()));
@@ -137,18 +71,30 @@ impl Entry {
         else if let Some(ref booktitle) = self.booktitle { output.push(booktitle.clone()); };
         output.concat()
     }
+}
 
-    pub fn labeled_to_str(&self, searched: &[String]) -> String {
+impl LabeledPrint for Entry {
+    fn labeled_to_str(&self, searched: &[String]) -> String {
         let mut output: Vec<String> = Vec::new();
-        if self.authors.len() > 0 {
+        if !self.authors.is_empty() {
             output.push(self.authors.labeled_to_str(searched));
-        } else if self.editors.len() > 0 {
+        } else if !self.editors.is_empty() {
             output.push(self.editors.labeled_to_str(searched));
         };
         output.push(format!(". ({}) {}. ", self.year, self.title.to_title()));
         if let Some(ref journal) = self.journal { output.push(journal.clone()); }
         else if let Some(ref booktitle) = self.booktitle { output.push(booktitle.clone()); };
         output.concat().trim_str()
+    }
+}
+
+impl Entry {
+    pub fn generate_citation(&self) -> String {
+        let last_name: &str = match self.authors.first().or_else(|| self.editors.first()) {
+            Some(x) => &x.search_term,
+            None => self.title.split_whitespace().next().expect("Error: Nothing in title!")
+        };
+        format!("{}{}", last_name, self.year)
     }
 }
 
@@ -163,6 +109,7 @@ impl TrimStr for String { fn trim_str(&self) -> String {
 
 #[cfg(test)]
 pub mod tests {
+    use super::bibtex::BibPrint;
     use super::*;
     #[test]
     fn test_person() {
@@ -183,14 +130,15 @@ pub mod tests {
         test_bib.push("test/data/test.bib");
         let item = bibtex::read_entries(&(test_bib));
         println!("title: \n{}", item[0].title.to_title());
-        let correct_bib = vec!["@article{einstein,",
+        let correct_bib = ["@article{einstein,",
             "\n\tyear = {1905},",
             "\n\tvolume = {322},",
             "\n\tnumber = {10},",
             "\n\tpages = {891-921},",
             "\n\tjournal = {Annalen der Physik},",
             "\n\tauthor = {Einstein, Albert}\n}"].concat();
-        let correct_str = vec!["Albert Einstein. (1905).{Zur Elektrodynamik bewegter K{\\\"o}rper}. ({German})\n        ",
+        let correct_str = [
+            "Albert Einstein. (1905).{Zur Elektrodynamik bewegter K{\\\"o}rper}. ({German})\n        ",
             "[{On} The Electrodynamics Of Moving Bodies]. Annalen der Physik"].concat();
         assert_eq!(item[0].to_str(), correct_str);
         assert_eq!(item[0].to_bib(), correct_bib);
@@ -200,7 +148,9 @@ pub mod tests {
         let mut test_bib = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_bib.push("test/data/test.bib");
         let item = bibtex::read_entries(&test_bib);
-        let correct_labeled: &str = "\u{1b}[38;5;1mMichel\u{1b}[38;5;4m Goossens\u{1b}[39m, Frank Mittelbach & \u{1b}[38;5;1mAlexander\u{1b}[38;5;4m Samarin\u{1b}[39m. (1993) The \\latex\\ Companion.";
+        let correct_labeled: &str = "\u{1b}[38;5;1mMichel\u{1b}[38;5;4m Goossens\u{1b}[39m, Frank Mittelbach & \u{1b}\
+                                     [38;5;1mAlexander\u{1b}[38;5;4m Samarin\u{1b}[39m. (1993)\
+                                     The \\latex\\ Companion.";
         assert_eq!(item[1].labeled_to_str(&["samarin".to_owned(), "goossens".to_owned()]), correct_labeled);
     }
 }

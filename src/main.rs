@@ -1,8 +1,8 @@
 #![feature(trait_alias)]
 #[doc=include_str!("../README.md")]
-use std::collections::HashSet;
 use std::iter::FromIterator;
 use structopt::StructOpt;
+use crate::formatter::ToString;
 
 mod action;
 mod config;
@@ -12,7 +12,6 @@ mod file;
 mod formatter;
 mod model;
 mod reader;
-mod ui;
 mod util;
 
 #[derive(StructOpt, Debug, PartialEq)]
@@ -67,11 +66,15 @@ enum Bibrs {
 }
 
 fn comma_separate_args<T: FromIterator<String>>(input: Vec<String>) -> T {
-    input.join(" ").split(",").map(|x| x.trim().to_string().to_lowercase()).filter(|x| x.len() > 0).collect()
+    input.join(" ").split(',').map(|x| x.trim().to_string().to_lowercase()).filter(|x| !x.is_empty()).collect()
 }
 
 fn main() {
     let opt = Bibrs::from_args();
+    if let Bibrs::Init = opt {
+        config::initialize();
+        return
+    }
     let conn = database::SqliteBibDB::new(None);
     match opt {
         Bibrs::Search{authors, keywords} =>
@@ -83,14 +86,18 @@ fn main() {
             if bibtex { println!("{}", action::output_bib(&conn, &source)); }
             if simple || !bibtex { println!("{}", action::output_str(&conn, &source)); }
         },
-        Bibrs::Keywords{source, add, del} =>
-            action::keywords(&source, comma_separate_args(add), comma_separate_args(del)),
-        Bibrs::Init => config::initialize()
+        Bibrs::Keywords{source, add, del} => {
+            let (entry, keywords) = action::keywords(&conn, &source, comma_separate_args(add),
+                                                     comma_separate_args(del));
+            print!("{}\n\t{}", entry.to_str(), keywords);
+        },
+        Bibrs::Init => (),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use super::*;
     #[test]
     fn test_opt() {
@@ -103,7 +110,7 @@ mod tests {
                 assert_eq!(add, vec!["bullshit", "weird"]);
                 assert_eq!(del, vec!["master"]);
             },
-            _ => assert!(false)
+            _ => panic!("Keywords not matched")
         };
         let opt = Bibrs::from_iter(vec!["bibrs", "s", "-a", "casagrande", "rosa"]);
         match opt {
@@ -111,16 +118,19 @@ mod tests {
                 assert_eq!(authors, vec!["casagrande", "rosa"]);
                 assert_eq!(keywords, Vec::<&str>::new());
             },
-            _ => assert!(false),
+            _ => panic!("authors not matched"),
         }
     }
 
     #[test]
     fn test_util() {
-        let res: HashSet<String> = comma_separate_args(["this", "good,that", "bad,this", "good"].iter().map(|x| (*x).to_owned()).collect());
+        let res: HashSet<String> = comma_separate_args(["this", "good,that", "bad,this", "good"].iter().map(
+                |x| (*x).to_owned()).collect());
         assert_eq!(res, ["this good", "that bad"].iter().map(|x| (*x).to_owned()).collect::<HashSet<String>>());
-        let res2: Vec<String> = comma_separate_args(["this", "good,that", "bad,this", "good"].iter().map(|x| (*x).to_owned()).collect());
-        assert_eq!(res2, ["this good", "that bad", "this good"].iter().map(|x| (*x).to_owned()).collect::<Vec<String>>());
+        let res2: Vec<String> = comma_separate_args(["this", "good,that", "bad,this", "good"].iter().map(
+                |x| (*x).to_owned()).collect());
+        assert_eq!(res2, ["this good", "that bad", "this good"].iter().map(|x| (*x).to_owned())
+            .collect::<Vec<String>>());
         let res3: Vec<String> = comma_separate_args(vec![]);
         assert_eq!(res3.len(), 0);
         let res4: HashSet<String> = comma_separate_args(vec![]);

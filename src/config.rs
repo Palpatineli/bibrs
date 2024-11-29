@@ -1,11 +1,14 @@
 use std::fs::{File, copy, create_dir};
-use std::io::{Read, stdin, Error as IOError};
+use std::io::{stdin, Write, Error as IOError, Read};
 use std::path::PathBuf;
 
 use serde_derive::Deserialize;
 use dirs::{home_dir, config_dir};
 use rusqlite::Connection;
 use lazy_static::lazy_static;
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
 
 #[derive(Deserialize, Clone)]
 pub struct FileHandler {
@@ -32,8 +35,8 @@ impl Config {
     pub fn new(config_path: Option<PathBuf>) -> Config {
         let mut config_file;
         let config_path = config_path.unwrap_or_else(|| DEFAULT_CONFIG.to_path_buf());
-        config_file = File::open(&config_path).expect(
-            &format!("Specified config file not found at {}!", config_path.to_string_lossy()));
+        config_file = File::open(&config_path).unwrap_or_else(
+            |_| panic!("Specified config file not found at {}!", config_path.to_string_lossy()));
         let mut config_str = String::new();
         config_file.read_to_string(&mut config_str).expect("Failed to read config");
         let mut output: Config = toml::from_str(&config_str).unwrap();
@@ -43,22 +46,38 @@ impl Config {
         output.comment.folder = home_dir().unwrap().join(&output.comment.folder);
         output.temp_pdf.folder = home_dir().unwrap().join(&output.temp_pdf.folder);
         output.temp_bib.folder = home_dir().unwrap().join(&output.temp_pdf.folder);
-        return output
+        output
+    }
+}
+
+fn confirmation() -> Result<bool, std::io::Error> {
+    let stdin = stdin();
+    let mut stdout = std::io::stdout().into_raw_mode()?;
+    write!(stdout, "y = yes | n = no")?;
+    stdout.flush()?;
+    let mut it = stdin.keys();
+    loop {
+        let c = it.next();
+        match c {
+            Some(x) => match x.unwrap() {
+                Key::Char('y') | Key::Char('Y') => break Ok(true),
+                Key::Ctrl('c') | Key::Ctrl('d') | Key::Ctrl('z') => break Ok(false),
+                _ => break Ok(false)
+            },
+            None => ()
+        }
     }
 }
 
 pub fn initialize() {
     println!("Do you want to initilize the bib database?");
-    let mut answer = String::new();
-    stdin().read_to_string(&mut answer).expect("Failed to read from stdin!");
-    match answer.as_ref() {
-        "y" | "1" | "Y" => {
-            let config = init_config().unwrap();
-            init_folders(&config).unwrap();
-            init_database(&config).unwrap();
-        },
-        _ => { println!("Bib database initialization canceled."); }
-    };
+    let answer = confirmation().unwrap();
+    if answer {
+        println!("Initializing...");
+        let config = init_config().unwrap();
+        init_folders(&config).unwrap();
+        init_database(&config).unwrap();
+    } else { println!("Bib database initialization canceled."); }
 }
 
 /// load config from xdg_config, if doesn't exist then copy default config from crate
@@ -91,7 +110,8 @@ fn init_database(config: &Config) -> Result<(), IOError> {
     if !journal_db_path.exists() { copy(journal_db_path, &config.journal_db)?; }
     let mut sql_query = String::new();
     let sql_migration_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migration/20180516-full-db/up.sql");
-    let mut f = File::open(&sql_migration_path).expect(&format!("sql migration file at {} not found!", &sql_migration_path.to_string_lossy()));
+    let mut f = File::open(&sql_migration_path).unwrap_or_else(|_| panic!("sql migration file at {} not found!",
+            &sql_migration_path.to_string_lossy()));
     f.read_to_string(&mut sql_query).expect("error reading sql migration file");
     let conn = Connection::open(&config.database).expect("cannot open database");
     conn.execute_batch(&sql_query).expect("Error applying migration code");

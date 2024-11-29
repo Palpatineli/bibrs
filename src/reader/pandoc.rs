@@ -34,7 +34,7 @@ pub fn read_pandoc(file_path: &PathBuf) -> Result<Vec<String>, Error> {
                     if let Value::Object(ref para_content) = paragraph {
                         if para_content["t"] == "Cite" {
                             if let Value::Array(ref token_content) = para_content["c"][0] {
-                                for citation in token_content.into_iter() {
+                                for citation in token_content.iter() {
                                     if let Value::String(ref citation_content) = citation["citationId"] {
                                         output.push(citation_content.clone());
                                     }
@@ -46,7 +46,7 @@ pub fn read_pandoc(file_path: &PathBuf) -> Result<Vec<String>, Error> {
             }
         }
     }
-    return Ok(output);
+    Ok(output)
 }
 
 #[cfg(test)]
@@ -55,6 +55,7 @@ mod tests {
     #[test]
     fn test_read_pandoc() {
         let citations = read_pandoc(&"test/data/extract_test.txt".into()).unwrap();
-        assert_eq!(citations, vec!["ehrhart2016", "kriaucionis2004", "dragich2007", "kerr2012", "itoh2012", "kerr2012", "kerr2012", "dragich2007"])
+        assert_eq!(citations, vec!["ehrhart2016", "kriaucionis2004", "dragich2007", "kerr2012", "itoh2012", "kerr2012",
+            "kerr2012", "dragich2007"])
     }
 }

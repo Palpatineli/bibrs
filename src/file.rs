@@ -4,7 +4,7 @@ use std::fs::{remove_file, rename, DirEntry};
 
 use crate::model::Entry;
 use crate::util::ToTitleCase;
-use crate::formatter::BibPrint;
+use crate::formatter::bibtex::BibPrint;
 pub use crate::config::{FileHandler, CONFIG};
 
 impl FileHandler {
@@ -16,7 +16,7 @@ impl FileHandler {
     /// if not found then just use the first one in self.extension
     fn search(&self, file_name: &str) -> PathBuf {
         let mut target_path = self.folder.clone();
-        target_path.push(&file_name);
+        target_path.push(file_name);
         for ext in self.extension.iter() {
             target_path.set_extension(ext);
             if target_path.exists() {
@@ -45,7 +45,7 @@ impl FileHandler {
             }
         }
         for mut list in found_path.into_iter() {
-            if list.len() > 0 {
+            if !list.is_empty() {
                 list.sort_by_key(|x| x.metadata().unwrap().accessed().unwrap());
                 return Ok(self.folder.join(list[list.len() - 1].path().file_name().ok_or_else(
                             || Error::new(ErrorKind::InvalidData,
@@ -67,7 +67,7 @@ pub trait BibFile {
 impl<'a> BibFile for File<'a> {
     fn open(&self) -> Result<()> { self.handler.open(&self.path) }
     fn path(&self) -> &Path { &self.path }
-    fn remove(self) -> Result<()> { remove_file(&self.path) }
+    fn remove(self) -> Result<()> { remove_file(self.path) }
 }
 
 impl<'a> File<'a> {
@@ -101,9 +101,9 @@ impl<'a> File<'a> {
 
 impl Entry {
     pub fn to_comment(&self) -> String {
-        let author_str = if self.authors.len() > 0 {
+        let author_str = if !self.authors.is_empty() {
             self.authors.to_bib()
-        } else if self.editors.len() > 0 {
+        } else if !self.editors.is_empty() {
             self.editors.to_bib()
         } else {
             "".to_owned()

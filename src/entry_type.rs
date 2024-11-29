@@ -1,7 +1,8 @@
 use std::fmt;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub enum EntryType {
+    #[default]
     Article,
     Book,
     Booklet,
@@ -57,8 +58,4 @@ impl fmt::Display for EntryType {
         };
         write!(f, "{}", printable)
     }
-}
-
-impl Default for EntryType {
-    fn default() -> EntryType { EntryType::Article }
 }
